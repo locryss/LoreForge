@@ -45,18 +45,28 @@ def _build_pages(show_gm: bool) -> dict[str, discord.Embed]:
     e = discord.Embed(title="🧙 Character", color=0x8B5CF6)
     e.add_field(name="Your Character", value=(
         "`/character create <name>` — register your character\n"
-        "`/character sheet` — view your stats (private)\n"
+        "`/character sheet` — view your full D&D stat sheet (private)\n"
         "`/character show` — post your sheet publicly\n"
         "`/character list` — all your characters (active, retired, dead)\n"
         "`/character use / unuse` — set or clear your active character\n"
-        "`/character edit_cosmetic` — change name, backstory, avatar *(instant)*\n"
-        "`/character edit_stats <field> <value>` — request stat change *(GM approval)*\n"
-        "`/character history` — your approved/denied change requests\n"
         "`/character compare @user` — side-by-side stat comparison\n"
         "`/character retire` — retire your active character"
     ), inline=False)
-    e.add_field(name="Classes & Progression", value=(
-        "`/classes browse` — browse available classes\n"
+    e.add_field(name="Editing Your Sheet", value=(
+        "Press **Edit Everything ✏️** on your sheet to open the full edit panel:\n"
+        "• **🎲 Stats** — STR/DEX/CON/INT/WIS *(GM approval for D&D)*\n"
+        "• **❤️ Combat** — CHA, HP, AC, Temp HP *(instant for HP current)*\n"
+        "• **📖 Identity** — Name, Race, Class, Background, Level\n"
+        "• **🖼️ Cosmetics** — Backstory, Avatar URL, Proxy brackets, Gold\n"
+        "`/character edit_stats <field> <value>` — legacy stat change request *(GM approval)*\n"
+        "`/character history` — your approved/denied change requests"
+    ), inline=False)
+    e.add_field(name="Goals & Classes", value=(
+        "`/character goal set <text>` — add a personal character goal\n"
+        "`/character goal view` — see your active and completed goals\n"
+        "`/character goal complete <id>` — mark a goal done\n"
+        "`/character goal delete <id>` — remove a goal\n"
+        "`/classes browse` — browse all available classes with full details\n"
         "`/gm xp @user <amount>` — GM awards XP *(GM only)*\n"
         "`/gm revive <name>` — revive dead character at 1 HP *(GM only)*"
     ), inline=False)
@@ -223,6 +233,41 @@ def _build_pages(show_gm: bool) -> dict[str, discord.Embed]:
     e.set_footer(text="LoreForge — Milestones & Titles")
     pages["milestones"] = e
 
+    # ── World & Journals ──────────────────────────────────────────────────────
+    e = discord.Embed(title="🌍 World & Journals", color=0x6366F1)
+    e.add_field(name="In-World Calendar", value=(
+        "`/calendar view` — see the current in-world date\n"
+        "`/calendar advance <days> [note]` — advance time *(GM only, auto-logs to timeline)*\n"
+        "`/calendar set <year> <month> <day>` — jump to a date *(GM only)*\n"
+        "`/calendar config` — configure era name, months, calendar system *(GM only)*"
+    ), inline=False)
+    e.add_field(name="Character Journals", value=(
+        "`/journal write <content> [title]` — write a private journal entry as your character\n"
+        "`/journal view` — browse your journal entries (private)\n"
+        "`/journal read <id>` — read a specific entry\n"
+        "`/journal share <id>` — toggle an entry public/private\n"
+        "`/journal delete <id>` — delete an entry\n"
+        "`/journal gm-view <character_name>` — GM: read any character's journal *(GM only)*"
+    ), inline=False)
+    e.add_field(name="Rumor Board", value=(
+        "`/rumor list` — view all active in-world notices\n"
+        "`/rumor view <id>` — read a specific rumor in full\n"
+        "`/rumor post <text> [source]` — post a new notice *(GM only)*\n"
+        "`/rumor remove <id>` — take down a rumor *(GM only)*"
+    ), inline=False)
+    e.add_field(name="Relationship Bonds", value=(
+        "`/bond set @user <description>` — set a narrative bond with another character\n"
+        "`/bond view` — see your outgoing and incoming bonds\n"
+        "`/bond remove @user` — remove a bond you set\n"
+        "`/bond all` — GM: view all bonds on the server *(GM only)*\n"
+        "*Bonds auto-appear on your character sheet*"
+    ), inline=False)
+    e.add_field(name="World Recap", value=(
+        "`/world recap` — catch-up embed: last 3 sessions, last 5 timeline events, active quest count, current in-world date"
+    ), inline=False)
+    e.set_footer(text="LoreForge — World & Journals")
+    pages["world"] = e
+
     # ── GM Tools ───────────────────────────────────────────────────────────────
     if show_gm:
         e = discord.Embed(
@@ -234,6 +279,7 @@ def _build_pages(show_gm: bool) -> dict[str, discord.Embed]:
             "`/gm kill @user [reason]` — mark a player's character as dead\n"
             "`/gm vision @user <text>` — send a private vision via DM\n"
             "`/gm announce <message> [title]` — post a styled announcement\n"
+            "`/gm hooks` — see all active character goals (story hooks) across all players\n"
             "`/npc-letter @user <content>` — send an in-character letter via DM"
         ), inline=False)
         e.add_field(name="Characters & XP", value=(
@@ -855,6 +901,7 @@ class HelpView(discord.ui.View):
             discord.SelectOption(label="Sessions", value="sessions", emoji="📋", description="Session logs, notes, recap"),
             discord.SelectOption(label="Timeline", value="timeline", emoji="⏳", description="Curated world history"),
             discord.SelectOption(label="Milestones & Titles", value="milestones", emoji="🏅", description="RP milestones and titles"),
+            discord.SelectOption(label="World & Journals", value="world", emoji="🌍", description="Calendar, journals, bonds, rumors, recap"),
         ]
         if self.show_gm:
             options.append(discord.SelectOption(label="GM Tools", value="gm", emoji="🛡️", description="Kill, vision, announce, edit, bosses"))
