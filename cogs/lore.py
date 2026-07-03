@@ -1,9 +1,9 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, or_
 from database.session import get_db
-from database.models import LoreEntry, GuildConfig
+from database.models import LoreEntry, GuildConfig, LoreLink, LorePlayerNote
 from services.utils import is_gm
 import random
 
@@ -136,42 +136,270 @@ async def lore_delete(interaction: discord.Interaction, title: str):
     await interaction.response.send_message(f"🗑️ Deleted lore entry **{title}**.")
 
 
-@lore_group.command(name="search", description="Search lore entries")
-@app_commands.describe(query="Search term")
-async def lore_search(interaction: discord.Interaction, query: str):
-    async with get_db() as db:
-        result = await db.execute(
-            select(LoreEntry).where(
-                LoreEntry.guild_id == interaction.guild_id,
-                LoreEntry.visibility == "public",
-                (LoreEntry.title.ilike(f"%{query}%")) | (LoreEntry.content.ilike(f"%{query}%")),
-            ).limit(5)
-        )
-        entries = result.scalars().all()
+# ── Lore display helpers ──────────────────────────────────────────────────────
 
-    if not entries:
-        await interaction.response.send_message(f"No lore entries match **{query}**.", ephemeral=True)
-        return
+CATEGORY_EMOJI: dict[str, str] = {
+    "history":      "📜",
+    "lore":         "📖",
+    "faction":      "⚔️",
+    "location":     "🗺️",
+    "creature":     "🐉",
+    "character":    "👤",
+    "item":         "💎",
+    "religion":     "🙏",
+    "event":        "⚡",
+    "organization": "🏛️",
+    "magic":        "✨",
+    "secret":       "🔒",
+}
+
+CATEGORY_COLOR: dict[str, int] = {
+    "history":      0xB8860B,
+    "lore":         0xA855F7,
+    "faction":      0xEF4444,
+    "location":     0x22C55E,
+    "creature":     0xF97316,
+    "character":    0x6366F1,
+    "item":         0xF1C40F,
+    "religion":     0xE879F9,
+    "event":        0x06B6D4,
+    "organization": 0x64748B,
+    "magic":        0x8B5CF6,
+    "secret":       0x374151,
+}
+
+_DEFAULT_LORE_COLOR = 0xA855F7
+
+
+def _cat_emoji(category: str) -> str:
+    return CATEGORY_EMOJI.get((category or "lore").lower(), "📖")
+
+
+def _cat_color(category: str) -> int:
+    return CATEGORY_COLOR.get((category or "lore").lower(), _DEFAULT_LORE_COLOR)
+
+
+def _tag_chips(tags: list) -> str:
+    if not tags:
+        return "*none*"
+    return "  ".join(f"`{t}`" for t in tags[:8])
+
+
+def _build_lore_card(entry: "LoreEntry", linked: list | None = None) -> discord.Embed:
+    emoji = _cat_emoji(entry.category)
+    color = _cat_color(entry.category)
+    label = (entry.category or "lore").title()
+
+    content = entry.content or "*No content.*"
+    truncated = len(content) > 2000
+    desc = content[:2000] + ("\n*…content truncated*" if truncated else "")
 
     embed = discord.Embed(
-        title=f"📚 Search Results: {query}",
-        color=0xA855F7,
+        title=f"{emoji}  {entry.title}",
+        description=desc,
+        color=color,
     )
-    for entry in entries:
-        excerpt = entry.content[:100] + "..." if len(entry.content) > 100 else entry.content
+
+    embed.add_field(name="Category", value=f"{emoji} {label}", inline=True)
+    embed.add_field(name="Tags", value=_tag_chips(entry.tags or []), inline=True)
+
+    status_parts = []
+    if entry.is_canon:
+        status_parts.append("✅ Canon")
+    if entry.is_rumor:
+        status_parts.append("💬 Rumor")
+    if status_parts:
+        embed.add_field(name="Status", value="  ·  ".join(status_parts), inline=True)
+
+    if linked:
+        linked_str = "  ·  ".join(
+            f"{_cat_emoji(e.category)} {e.title}" for e in linked[:6]
+        )
+        embed.add_field(name="🔗 Related Entries", value=linked_str, inline=False)
+
+    if entry.image_url:
+        embed.set_image(url=entry.image_url)
+
+    embed.set_footer(text=f"LoreForge Codex  ·  #{entry.id}")
+    return embed
+
+
+def _build_index_embed(
+    entries: list,
+    page: int,
+    per_page: int,
+    total: int,
+    title_prefix: str = "",
+) -> discord.Embed:
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    start = page * per_page
+    page_entries = entries[start : start + per_page]
+
+    # Group current page entries by category
+    grouped: dict[str, list] = {}
+    for e in page_entries:
+        cat = (e.category or "lore").lower()
+        grouped.setdefault(cat, []).append(e)
+
+    embed = discord.Embed(
+        title=f"📚 {title_prefix or 'Lore Codex'}",
+        color=_DEFAULT_LORE_COLOR,
+    )
+    embed.description = f"**{total}** entries  ·  Page {page + 1}/{total_pages}\n​"
+
+    for cat, cat_entries in grouped.items():
+        emoji = _cat_emoji(cat)
+        label = cat.title()
+        lines = []
+        for e in cat_entries:
+            tags = ("  " + "  ".join(f"`{t}`" for t in (e.tags or [])[:3])) if e.tags else ""
+            lines.append(f"**{e.title}**{tags}")
         embed.add_field(
-            name=f"{entry.title} ({entry.category})",
-            value=f"*{excerpt}*",
+            name=f"{emoji}  {label}",
+            value="\n".join(lines),
             inline=False,
         )
 
-    await interaction.response.send_message(embed=embed)
+    embed.set_footer(text=f"Use the menu below to read any entry  ·  LoreForge Codex")
+    return embed
 
 
-@lore_group.command(name="view", description="View a lore entry")
+class LoreIndexView(discord.ui.View):
+    PER_PAGE = 8
+
+    def __init__(self, entries: list, page: int = 0, title_prefix: str = ""):
+        super().__init__(timeout=300)
+        self.entries = entries
+        self.page = page
+        self.total = len(entries)
+        self.title_prefix = title_prefix
+        self._rebuild()
+
+    def _rebuild(self):
+        self.clear_items()
+        start = self.page * self.PER_PAGE
+        page_entries = self.entries[start : start + self.PER_PAGE]
+        total_pages = max(1, (self.total + self.PER_PAGE - 1) // self.PER_PAGE)
+
+        # Select menu — open any entry on this page
+        if page_entries:
+            select = discord.ui.Select(
+                placeholder="📖 Select an entry to read it…",
+                options=[
+                    discord.SelectOption(
+                        label=e.title[:100],
+                        value=str(e.id),
+                        emoji=_cat_emoji(e.category),
+                        description=(f"{e.category.title()}  ·  {', '.join((e.tags or [])[:2])}"[:100]) if e.tags else e.category.title()[:100],
+                    )
+                    for e in page_entries
+                ],
+            )
+            select.callback = self._on_select
+            self.add_item(select)
+
+        # Nav buttons
+        prev_btn = discord.ui.Button(
+            label="◀  Prev",
+            style=discord.ButtonStyle.secondary,
+            disabled=(self.page <= 0),
+            row=1,
+        )
+        prev_btn.callback = self._prev
+        self.add_item(prev_btn)
+
+        page_btn = discord.ui.Button(
+            label=f"Page {self.page + 1} / {total_pages}",
+            style=discord.ButtonStyle.secondary,
+            disabled=True,
+            row=1,
+        )
+        self.add_item(page_btn)
+
+        next_btn = discord.ui.Button(
+            label="Next  ▶",
+            style=discord.ButtonStyle.secondary,
+            disabled=(self.page >= total_pages - 1),
+            row=1,
+        )
+        next_btn.callback = self._next
+        self.add_item(next_btn)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        entry_id = int(interaction.data["values"][0])
+        async with get_db() as db:
+            result = await db.execute(select(LoreEntry).where(LoreEntry.id == entry_id))
+            entry = result.scalar_one_or_none()
+            if not entry:
+                await interaction.response.send_message("Entry not found.", ephemeral=True)
+                return
+            links_result = await db.execute(
+                select(LoreLink).where(
+                    LoreLink.guild_id == interaction.guild_id,
+                    or_(LoreLink.entry_id_a == entry.id, LoreLink.entry_id_b == entry.id),
+                )
+            )
+            links = list(links_result.scalars().all())
+            linked_ids = [
+                lnk.entry_id_b if lnk.entry_id_a == entry.id else lnk.entry_id_a
+                for lnk in links
+            ]
+            linked_entries = []
+            if linked_ids:
+                lr = await db.execute(select(LoreEntry).where(LoreEntry.id.in_(linked_ids)))
+                linked_entries = list(lr.scalars().all())
+        embed = _build_lore_card(entry, linked=linked_entries)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _prev(self, interaction: discord.Interaction):
+        self.page = max(0, self.page - 1)
+        self._rebuild()
+        embed = _build_index_embed(self.entries, self.page, self.PER_PAGE, self.total, self.title_prefix)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def _next(self, interaction: discord.Interaction):
+        max_page = max(0, (self.total + self.PER_PAGE - 1) // self.PER_PAGE - 1)
+        self.page = min(max_page, self.page + 1)
+        self._rebuild()
+        embed = _build_index_embed(self.entries, self.page, self.PER_PAGE, self.total, self.title_prefix)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+@lore_group.command(name="search", description="Search lore entries by title or content")
+@app_commands.describe(query="Search term")
+async def lore_search(interaction: discord.Interaction, query: str):
+    await interaction.response.defer(ephemeral=True)
+    user_is_gm = await is_gm(interaction)
+    async with get_db() as db:
+        q = f"%{query}%"
+        base = select(LoreEntry).where(
+            LoreEntry.guild_id == interaction.guild_id,
+            or_(LoreEntry.title.ilike(q), LoreEntry.content.ilike(q)),
+        )
+        if not user_is_gm:
+            base = base.where(LoreEntry.visibility == "public")
+        result = await db.execute(base.order_by(LoreEntry.title).limit(40))
+        entries = list(result.scalars().all())
+
+    if not entries:
+        await interaction.followup.send(f"No lore entries match **{query}**.", ephemeral=True)
+        return
+
+    if len(entries) == 1:
+        embed = _build_lore_card(entries[0])
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
+    embed = _build_index_embed(entries, 0, LoreIndexView.PER_PAGE, len(entries), f"Search: {query}")
+    view = LoreIndexView(entries, title_prefix=f"Search: {query}")
+    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+@lore_group.command(name="view", description="View a lore entry in full")
 @app_commands.describe(title="Title of the lore entry")
 @app_commands.autocomplete(title=_lore_autocomplete)
 async def lore_view(interaction: discord.Interaction, title: str):
+    user_is_gm = await is_gm(interaction)
     async with get_db() as db:
         result = await db.execute(
             select(LoreEntry).where(
@@ -184,60 +412,54 @@ async def lore_view(interaction: discord.Interaction, title: str):
     if not entry:
         await interaction.response.send_message("Lore entry not found.", ephemeral=True)
         return
-
-    # Visibility check
-    user_is_gm = await is_gm(interaction)
     if entry.visibility not in ("public",) and not user_is_gm:
         await interaction.response.send_message("Lore entry not found.", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title=f"📚 {entry.title}",
-        description=entry.content[:2000] if entry.content else "*No content.*",
-        color=0xA855F7,
-    )
-    embed.add_field(name="Category", value=entry.category, inline=True)
-    embed.add_field(name="Tags", value=", ".join(entry.tags or []) or "None", inline=True)
-    if entry.image_url:
-        embed.set_image(url=entry.image_url)
-    embed.set_footer(text=f"Canon: {'Yes' if entry.is_canon else 'No'}  ·  Rumor: {'Yes' if entry.is_rumor else 'No'}")
+    async with get_db() as db:
+        links_result = await db.execute(
+            select(LoreLink).where(
+                LoreLink.guild_id == interaction.guild_id,
+                or_(LoreLink.entry_id_a == entry.id, LoreLink.entry_id_b == entry.id),
+            )
+        )
+        links = list(links_result.scalars().all())
+        linked_ids = [
+            lnk.entry_id_b if lnk.entry_id_a == entry.id else lnk.entry_id_a
+            for lnk in links
+        ]
+        linked_entries = []
+        if linked_ids:
+            lr = await db.execute(select(LoreEntry).where(LoreEntry.id.in_(linked_ids)))
+            linked_entries = list(lr.scalars().all())
 
+    embed = _build_lore_card(entry, linked=linked_entries)
     await interaction.response.send_message(embed=embed)
 
 
-@lore_group.command(name="list", description="List all lore entries")
+@lore_group.command(name="list", description="Browse the world lore codex")
 @app_commands.describe(category="Filter by category (optional)")
 async def lore_list(interaction: discord.Interaction, category: str = None):
+    await interaction.response.defer()
+    user_is_gm = await is_gm(interaction)
     async with get_db() as db:
-        query = select(LoreEntry).where(
-            LoreEntry.guild_id == interaction.guild_id,
-            LoreEntry.visibility == "public",
-        )
+        query = select(LoreEntry).where(LoreEntry.guild_id == interaction.guild_id)
+        if not user_is_gm:
+            query = query.where(LoreEntry.visibility == "public")
         if category:
-            query = query.where(LoreEntry.category.ilike(category))
-        query = query.order_by(LoreEntry.updated_at.desc()).limit(25)
+            query = query.where(LoreEntry.category.ilike(f"%{category}%"))
+        query = query.order_by(LoreEntry.category, LoreEntry.title)
         result = await db.execute(query)
-        entries = result.scalars().all()
+        entries = list(result.scalars().all())
 
     if not entries:
-        await interaction.response.send_message("No lore entries found.", ephemeral=True)
+        await interaction.followup.send("No lore entries found yet.", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title=f"📚 Lore Entries{f' ({category})' if category else ''}",
-        color=0xA855F7,
-    )
-    text = ""
-    for entry in entries:
-        tag_str = f" [{', '.join(entry.tags[:2])}]" if entry.tags else ""
-        text += f"• **{entry.title}** ({entry.category}){tag_str}\n"
-
-    if len(text) > 1000:
-        embed.description = text[:1000] + f"\n\n*...and {len(entries) - 10} more*"
-    else:
-        embed.description = text
-
-    await interaction.response.send_message(embed=embed)
+    title_prefix = f"Category: {category.title()}" if category else "Lore Codex"
+    embed = _build_index_embed(entries, 0, LoreIndexView.PER_PAGE, len(entries), title_prefix)
+    view = LoreIndexView(entries, title_prefix=title_prefix)
+    await interaction.followup.send(embed=embed, view=view)
 
 
 @lore_group.command(name="random", description="Get a random lore entry")
@@ -263,13 +485,8 @@ async def lore_random(interaction: discord.Interaction):
         entries = result.scalars().all()
         entry = random.choice(entries)
 
-    embed = discord.Embed(
-        title=f"📚 Random Lore: {entry.title}",
-        description=entry.content[:2000] if entry.content else "*No content.*",
-        color=0xA855F7,
-    )
-    embed.add_field(name="Category", value=entry.category, inline=True)
-
+    embed = _build_lore_card(entry)
+    embed.title = f"🎲 Random Entry  ·  {entry.title}"
     await interaction.response.send_message(embed=embed)
 
 
@@ -519,96 +736,353 @@ async def lore_add_template(interaction: discord.Interaction, template_type: str
 
 # ── /codex command ────────────────────────────────────────────────────────────
 
-@app_commands.command(name="codex", description="Unified world search — search lore, NPCs, locations, factions, and bestiary")
+@app_commands.command(name="codex", description="Unified world search — lore, NPCs, locations, factions, bestiary, timeline, sessions")
 @app_commands.describe(query="Search term")
 async def codex_cmd(interaction: discord.Interaction, query: str):
     await interaction.response.defer(ephemeral=True)
-    from database.models import NPC, Location, Faction, BossTemplate
+    from database.models import NPC, Location, Faction, BossTemplate, TimelineEvent, SessionLog
 
+    q = f"%{query}%"
     async with get_db() as db:
-        # LoreEntry search
         lore_result = await db.execute(
             select(LoreEntry).where(
                 LoreEntry.guild_id == interaction.guild_id,
                 LoreEntry.visibility == "public",
-                ((LoreEntry.title.ilike(f"%{query}%")) | (LoreEntry.content.ilike(f"%{query}%"))),
+                or_(LoreEntry.title.ilike(q), LoreEntry.content.ilike(q)),
             ).limit(3)
         )
         lore_matches = list(lore_result.scalars().all())
 
-        # NPC search
         npc_result = await db.execute(
             select(NPC).where(
                 NPC.guild_id == interaction.guild_id,
                 NPC.is_dead == False,
-                ((NPC.name.ilike(f"%{query}%")) | (NPC.description.ilike(f"%{query}%"))),
+                or_(NPC.name.ilike(q), NPC.description.ilike(q)),
             ).limit(3)
         )
         npc_matches = list(npc_result.scalars().all())
 
-        # Location search
         loc_result = await db.execute(
             select(Location).where(
                 Location.guild_id == interaction.guild_id,
                 Location.is_hidden == False,
-                ((Location.name.ilike(f"%{query}%")) | (Location.description.ilike(f"%{query}%"))),
+                or_(Location.name.ilike(q), Location.description.ilike(q)),
             ).limit(3)
         )
         loc_matches = list(loc_result.scalars().all())
 
-        # Faction search
         fac_result = await db.execute(
             select(Faction).where(
                 Faction.guild_id == interaction.guild_id,
-                ((Faction.name.ilike(f"%{query}%")) | (Faction.description.ilike(f"%{query}%"))),
+                or_(Faction.name.ilike(q), Faction.description.ilike(q)),
             ).limit(3)
         )
         fac_matches = list(fac_result.scalars().all())
 
-        # BossTemplate (Bestiary) search
         boss_result = await db.execute(
             select(BossTemplate).where(
                 BossTemplate.guild_id == interaction.guild_id,
-                ((BossTemplate.name.ilike(f"%{query}%")) | (BossTemplate.description.ilike(f"%{query}%"))),
+                or_(BossTemplate.name.ilike(q), BossTemplate.description.ilike(q)),
             ).limit(3)
         )
         boss_matches = list(boss_result.scalars().all())
 
-    has_any = lore_matches or npc_matches or loc_matches or fac_matches or boss_matches
-    if not has_any:
-        await interaction.followup.send(
-            f"No world entries found for '{query}'.",
-            ephemeral=True,
+        timeline_result = await db.execute(
+            select(TimelineEvent).where(
+                TimelineEvent.guild_id == interaction.guild_id,
+                or_(TimelineEvent.title.ilike(q), TimelineEvent.description.ilike(q)),
+            ).limit(3)
         )
+        timeline_matches = list(timeline_result.scalars().all())
+
+        session_result = await db.execute(
+            select(SessionLog).where(
+                SessionLog.guild_id == interaction.guild_id,
+                or_(SessionLog.title.ilike(q), SessionLog.summary.ilike(q)),
+            ).limit(3)
+        )
+        session_matches = list(session_result.scalars().all())
+
+    has_any = any([lore_matches, npc_matches, loc_matches, fac_matches, boss_matches, timeline_matches, session_matches])
+    if not has_any:
+        await interaction.followup.send(f"No world entries found for **{query}**.", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title=f"📖 Codex Search: {query}",
-        color=0x8B5CF6,
-    )
+    embed = discord.Embed(title=f"📖 Codex: {query}", color=0x8B5CF6)
 
     if lore_matches:
-        lines = [f"**{e.title}** — {e.content[:80]}..." for e in lore_matches]
+        lines = [f"**{e.title}** ({e.category}) — {e.content[:70]}…" for e in lore_matches]
         embed.add_field(name="📚 Lore", value="\n".join(lines), inline=False)
-
     if npc_matches:
-        lines = [f"**{n.name}** ({n.title or 'No title'}) — {n.description[:80]}..." for n in npc_matches]
+        lines = [f"**{n.name}**{'🕐' if n.temporary else ''} — {(n.description or '')[:70]}…" for n in npc_matches]
         embed.add_field(name="👤 NPCs", value="\n".join(lines), inline=False)
-
     if loc_matches:
-        lines = [f"**{l.name}** — {l.description[:80]}..." for l in loc_matches]
+        lines = [f"**{l.name}** — {(l.description or '')[:70]}…" for l in loc_matches]
         embed.add_field(name="🗺️ Locations", value="\n".join(lines), inline=False)
-
     if fac_matches:
-        lines = [f"**{f.name}** — {f.description[:80]}..." for f in fac_matches]
+        lines = [f"**{f.name}** — {(f.description or '')[:70]}…" for f in fac_matches]
         embed.add_field(name="🏛️ Factions", value="\n".join(lines), inline=False)
-
     if boss_matches:
-        lines = [f"**{b.name}** ({b.title or 'No title'}) — ❤️ {b.hp_max} HP" for b in boss_matches]
+        lines = [f"**{b.name}** — ❤️ {b.hp_max} HP" for b in boss_matches]
         embed.add_field(name="⚔️ Bestiary", value="\n".join(lines), inline=False)
+    if timeline_matches:
+        lines = [f"**{t.title}** [{t.era or '?'}] — {(t.description or '')[:70]}…" for t in timeline_matches]
+        embed.add_field(name="⏳ Timeline", value="\n".join(lines), inline=False)
+    if session_matches:
+        lines = [f"**{s.title or f'Session #{s.id}'}** — {(s.summary or '')[:70]}…" for s in session_matches]
+        embed.add_field(name="📋 Sessions", value="\n".join(lines), inline=False)
 
-    embed.set_footer(text=f"Use /lore view, /npc look, /location view for full details")
+    embed.set_footer(text="Use /lore view, /npc view, /timeline list, /session view for full details")
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ── /lore tag ─────────────────────────────────────────────────────────────────
+
+@lore_group.command(name="tag", description="Add or remove a tag on a lore entry (GM only)")
+@app_commands.describe(title="Lore entry title", tag="Tag to add or remove", remove="Set true to remove the tag")
+@app_commands.autocomplete(title=_lore_autocomplete)
+async def lore_tag(interaction: discord.Interaction, title: str, tag: str, remove: bool = False):
+    if not await is_gm(interaction):
+        await interaction.response.send_message("Only GMs can tag lore.", ephemeral=True)
+        return
+    async with get_db() as db:
+        result = await db.execute(
+            select(LoreEntry).where(LoreEntry.guild_id == interaction.guild_id, LoreEntry.title.ilike(title))
+        )
+        entry = result.scalar_one_or_none()
+        if not entry:
+            await interaction.response.send_message("Lore entry not found.", ephemeral=True)
+            return
+        tags = list(entry.tags or [])
+        tag_lower = tag.lower()
+        if remove:
+            tags = [t for t in tags if t.lower() != tag_lower]
+            action = "removed from"
+        else:
+            if tag_lower not in [t.lower() for t in tags]:
+                tags.append(tag)
+            action = "added to"
+        entry.tags = tags
+    await interaction.response.send_message(f"🏷️ Tag **{tag}** {action} **{entry.title}**.", ephemeral=True)
+
+
+# ── /lore filter ──────────────────────────────────────────────────────────────
+
+@lore_group.command(name="filter", description="List lore entries with a specific tag")
+@app_commands.describe(tag="Tag to filter by")
+async def lore_filter(interaction: discord.Interaction, tag: str):
+    async with get_db() as db:
+        result = await db.execute(
+            select(LoreEntry).where(
+                LoreEntry.guild_id == interaction.guild_id,
+                LoreEntry.visibility == "public",
+            )
+        )
+        all_entries = result.scalars().all()
+
+    tag_lower = tag.lower()
+    matches = [e for e in all_entries if any(t.lower() == tag_lower for t in (e.tags or []))]
+
+    if not matches:
+        await interaction.response.send_message(f"No public lore entries tagged **{tag}**.", ephemeral=True)
+        return
+
+    embed = _build_index_embed(matches, 0, LoreIndexView.PER_PAGE, len(matches), f"Tag: {tag}")
+    view = LoreIndexView(matches, title_prefix=f"Tag: {tag}")
+    await interaction.response.send_message(embed=embed, view=view)
+
+
+# ── /lore link ────────────────────────────────────────────────────────────────
+
+@lore_group.command(name="link", description="Link two lore entries together (GM only)")
+@app_commands.describe(title_a="First lore entry", title_b="Second lore entry to link to")
+@app_commands.autocomplete(title_a=_lore_autocomplete, title_b=_lore_autocomplete)
+async def lore_link(interaction: discord.Interaction, title_a: str, title_b: str):
+    if not await is_gm(interaction):
+        await interaction.response.send_message("Only GMs can link lore.", ephemeral=True)
+        return
+    async with get_db() as db:
+        ra = await db.execute(select(LoreEntry).where(LoreEntry.guild_id == interaction.guild_id, LoreEntry.title.ilike(title_a)))
+        entry_a = ra.scalar_one_or_none()
+        rb = await db.execute(select(LoreEntry).where(LoreEntry.guild_id == interaction.guild_id, LoreEntry.title.ilike(title_b)))
+        entry_b = rb.scalar_one_or_none()
+        if not entry_a or not entry_b:
+            await interaction.response.send_message("One or both lore entries not found.", ephemeral=True)
+            return
+        if entry_a.id == entry_b.id:
+            await interaction.response.send_message("Cannot link an entry to itself.", ephemeral=True)
+            return
+        id_a, id_b = sorted([entry_a.id, entry_b.id])
+        existing = await db.execute(
+            select(LoreLink).where(LoreLink.entry_id_a == id_a, LoreLink.entry_id_b == id_b)
+        )
+        if existing.scalar_one_or_none():
+            await interaction.response.send_message("These entries are already linked.", ephemeral=True)
+            return
+        db.add(LoreLink(guild_id=interaction.guild_id, entry_id_a=id_a, entry_id_b=id_b, created_by=interaction.user.id))
+    await interaction.response.send_message(f"🔗 **{entry_a.title}** ↔ **{entry_b.title}** linked.", ephemeral=True)
+
+
+# ── /lore linked ──────────────────────────────────────────────────────────────
+
+@lore_group.command(name="linked", description="Show all lore entries linked to a given entry")
+@app_commands.describe(title="Lore entry to look up links for")
+@app_commands.autocomplete(title=_lore_autocomplete)
+async def lore_linked(interaction: discord.Interaction, title: str):
+    async with get_db() as db:
+        result = await db.execute(
+            select(LoreEntry).where(LoreEntry.guild_id == interaction.guild_id, LoreEntry.title.ilike(title))
+        )
+        entry = result.scalar_one_or_none()
+        if not entry:
+            await interaction.response.send_message("Lore entry not found.", ephemeral=True)
+            return
+
+        links_result = await db.execute(
+            select(LoreLink).where(
+                LoreLink.guild_id == interaction.guild_id,
+                or_(LoreLink.entry_id_a == entry.id, LoreLink.entry_id_b == entry.id),
+            )
+        )
+        links = list(links_result.scalars().all())
+        if not links:
+            await interaction.response.send_message(f"**{entry.title}** has no linked entries yet.", ephemeral=True)
+            return
+
+        linked_ids = [
+            lnk.entry_id_b if lnk.entry_id_a == entry.id else lnk.entry_id_a
+            for lnk in links
+        ]
+        entries_result = await db.execute(select(LoreEntry).where(LoreEntry.id.in_(linked_ids)))
+        linked_entries = list(entries_result.scalars().all())
+
+    embed = _build_index_embed(linked_entries, 0, LoreIndexView.PER_PAGE, len(linked_entries), f"Linked to: {entry.title}")
+    view = LoreIndexView(linked_entries, title_prefix=f"Linked to: {entry.title}")
+    await interaction.response.send_message(embed=embed, view=view)
+
+
+# ── /lore note ────────────────────────────────────────────────────────────────
+
+@lore_group.command(name="note", description="Add a personal private note to a lore entry")
+@app_commands.describe(title="Lore entry to annotate", note="Your private note (only you can see it)")
+@app_commands.autocomplete(title=_lore_autocomplete)
+async def lore_note(interaction: discord.Interaction, title: str, note: str):
+    async with get_db() as db:
+        result = await db.execute(
+            select(LoreEntry).where(LoreEntry.guild_id == interaction.guild_id, LoreEntry.title.ilike(title))
+        )
+        entry = result.scalar_one_or_none()
+        if not entry:
+            await interaction.response.send_message("Lore entry not found.", ephemeral=True)
+            return
+        existing = await db.execute(
+            select(LorePlayerNote).where(
+                LorePlayerNote.user_id == interaction.user.id,
+                LorePlayerNote.lore_entry_id == entry.id,
+            )
+        )
+        player_note = existing.scalar_one_or_none()
+        if player_note:
+            player_note.note = note
+        else:
+            db.add(LorePlayerNote(
+                user_id=interaction.user.id,
+                lore_entry_id=entry.id,
+                guild_id=interaction.guild_id,
+                note=note,
+            ))
+    await interaction.response.send_message(
+        f"📝 Your private note on **{entry.title}** saved.", ephemeral=True
+    )
+
+
+# ── /lore pending ─────────────────────────────────────────────────────────────
+
+class _ApproveDenyView(discord.ui.View):
+    def __init__(self, entry_id: int, title: str, submitter_id: int):
+        super().__init__(timeout=86400)
+        self.entry_id = entry_id
+        self.title = title
+        self.submitter_id = submitter_id
+
+    @discord.ui.button(label="✅ Approve", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, btn: discord.ui.Button):
+        if not await is_gm(interaction):
+            await interaction.response.send_message("Only GMs can approve.", ephemeral=True)
+            return
+        async with get_db() as db:
+            r = await db.execute(select(LoreEntry).where(LoreEntry.id == self.entry_id))
+            e = r.scalar_one_or_none()
+            if e:
+                e.visibility = "public"
+        try:
+            submitter = await interaction.guild.fetch_member(self.submitter_id)
+            if submitter:
+                await submitter.send(f"✅ Your lore entry **{self.title}** was approved by the GM.")
+        except Exception:
+            pass
+        await interaction.response.edit_message(content=f"✅ **{self.title}** approved!", view=None)
+        self.stop()
+
+    @discord.ui.button(label="❌ Deny", style=discord.ButtonStyle.danger)
+    async def deny(self, interaction: discord.Interaction, btn: discord.ui.Button):
+        if not await is_gm(interaction):
+            await interaction.response.send_message("Only GMs can deny.", ephemeral=True)
+            return
+        async with get_db() as db:
+            r = await db.execute(select(LoreEntry).where(LoreEntry.id == self.entry_id))
+            e = r.scalar_one_or_none()
+            if e:
+                await db.delete(e)
+        try:
+            submitter = await interaction.guild.fetch_member(self.submitter_id)
+            if submitter:
+                await submitter.send(f"❌ Your lore entry **{self.title}** was not approved.")
+        except Exception:
+            pass
+        await interaction.response.edit_message(content=f"❌ **{self.title}** denied.", view=None)
+        self.stop()
+
+
+@lore_group.command(name="pending", description="Review pending player lore submissions (GM only)")
+async def lore_pending(interaction: discord.Interaction):
+    if not await is_gm(interaction):
+        await interaction.response.send_message("Only GMs can review pending lore.", ephemeral=True)
+        return
+    async with get_db() as db:
+        result = await db.execute(
+            select(LoreEntry).where(
+                LoreEntry.guild_id == interaction.guild_id,
+                LoreEntry.visibility == "submitted",
+            ).order_by(LoreEntry.created_at.asc()).limit(10)
+        )
+        pending = list(result.scalars().all())
+
+    if not pending:
+        await interaction.response.send_message("No pending lore submissions.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    for entry in pending:
+        embed = discord.Embed(
+            title=f"📝 Pending: {entry.title}",
+            description=entry.content[:1500],
+            color=0xF59E0B,
+        )
+        embed.add_field(name="Category", value=entry.category, inline=True)
+        submitter_id = entry.submitted_by or entry.created_by
+        embed.add_field(name="Submitted by", value=f"<@{submitter_id}>", inline=True)
+        await interaction.followup.send(
+            embed=embed,
+            view=_ApproveDenyView(entry.id, entry.title, submitter_id),
+            ephemeral=True,
+        )
+
+
+# ── Expand /codex to include timeline + sessions ──────────────────────────────
+
+# Override codex_cmd — redefine it below the LoreCog setup
+# (The original is registered in LoreCog; we'll patch the function body here and leave registration alone)
 
 
 class LoreCog(commands.Cog, name="Lore"):
