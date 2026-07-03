@@ -15,7 +15,7 @@ import math
 MAX_CHARACTERS = 3
 
 RESTRICTED_USER_ID = 849025341783408701
-RESTRICTED_CLASSES = ["Heavenly Demon Heir"]
+RESTRICTED_CLASSES: list[str] = []
 
 RACES = {
     "Human":     {"str": 1, "dex": 1, "con": 1, "int": 1, "wis": 1, "cha": 1},
@@ -34,7 +34,6 @@ CLASSES = {
     "Wizard":    {"hit_die": 6,  "primary": "int", "armor": "none", "saves": ["int", "wis"]},
     "Barbarian": {"hit_die": 12, "primary": "str", "armor": "medium", "saves": ["str", "con"]},
     "Warlock":   {"hit_die": 8,  "primary": "cha", "armor": "light", "saves": ["wis", "cha"]},
-    "Heavenly Demon Heir": {"hit_die": 8, "primary": "dex", "armor": "light", "saves": ["dex", "wis"]},
     # Phase 4 — Six New Classes
     "Paladin":   {"hit_die": 10, "primary": "str", "armor": "heavy", "description": "A holy warrior who channels divine power to smite enemies and protect allies.", "saves": ["wis", "cha"]},
     "Ranger":    {"hit_die": 10, "primary": "dex", "armor": "medium", "description": "A skilled hunter who tracks prey across any terrain and strikes with deadly precision.", "saves": ["str", "dex"]},
@@ -60,7 +59,6 @@ CLASS_STAT_ORDER = {
     "Wizard":    ["int", "dex", "con", "wis", "cha", "str"],
     "Barbarian": ["str", "con", "dex", "wis", "cha", "int"],
     "Warlock":   ["cha", "con", "dex", "wis", "int", "str"],
-    "Heavenly Demon Heir": ["dex", "wis", "con", "int", "str", "cha"],
     "Paladin":   ["str", "cha", "con", "wis", "dex", "int"],
     "Ranger":    ["dex", "wis", "con", "str", "int", "cha"],
     "Druid":     ["wis", "con", "dex", "int", "cha", "str"],
@@ -76,7 +74,6 @@ CLASS_DESCRIPTIONS = {
     "Wizard":    "Spell caster — Spellbook & Arcane Recovery",
     "Barbarian": "Rage machine — Bonus damage & resistance",
     "Warlock":   "Pact caster — Eldritch Blast & short-rest slots",
-    "Heavenly Demon Heir": "Sword cultivator — Tao system & 24 Demonic Forms",
     "Paladin":   "Holy warrior — Divine Smite & healing",
     "Ranger":    "Hunter & tracker — Hunter's Mark & archery",
     "Druid":     "Nature caster — Wild Shape & beast forms",
@@ -212,31 +209,6 @@ CLASS_INFO = {
             "• **You're a glass cannon** — 1d8 hit die means you can take some hits, but not many. Stay at range."
         ),
     },
-    "Heavenly Demon Heir": {
-        "hit_die": 8,
-        "primary": "Dexterity",
-        "saves": "DEX & WIS",
-        "resource": "**Tao Points** — fuel the 24 Demonic Sword Forms, telekinetic sword control, and supernatural techniques. Regained on long rest. **Nano System** — advantage on initiative, reroll one attack per turn.",
-        "flavor": (
-            "The Heavenly Demon Heir is a martial cultivator who combines sword mastery, demonic martial arts, "
-            "and an internal Tao system that enhances every facet of combat. Through cultivation of Tao, you "
-            "unleash rapid sequences of attacks, manipulate blades through the air with your mind, and ascend "
-            "to supernatural dominance over the battlefield.\n\n"
-            "Your power comes from the 24 Demonic Sword Forms — forbidden techniques passed down through "
-            "generations. From the basic Demonic Strike to the apocalyptic Sword Rain: Heavenly Demon "
-            "Cataclysm, each form channels Tao into devastating chains of attacks. At your peak, you command "
-            "storms of flying blades as extensions of your will. The Heavenly Demon does not simply wield a "
-            "blade. The blade obeys the Heavenly Demon."
-        ),
-        "tips": (
-            "• **Tao is your fuel** — manage it carefully. Running out leaves you unconscious.\n"
-            "• **Choose your path at level 3** — Heavenly Demon (sword control), Blood Demon (form combos), or Elemental Demon (elemental damage).\n"
-            "• **Chain forms for maximum damage** — Blood Demon path lets you chain 10 forms in one turn.\n"
-            "• **Control flying swords for battlefield dominance** — each sword costs 2 Tao but attacks independently.\n"
-            "• **Save Absolute Heavenly Demon State and Forbidden Form for boss fights** — they are game-ending.\n"
-            "• **Your Nano System gives you advantage on initiative** — you almost always go first."
-        ),
-    },
 }
 
 RACE_INFO = {
@@ -365,29 +337,6 @@ TUTORIALS = {
             {"name": "🏃 Don't Forget Mobility", "value": "You're fast. Use it to close gaps, chase runners, and reposition when needed."},
         ]},
     ],
-    "Heavenly Demon Heir": [
-        {"title": "Welcome, Heavenly Demon Heir!", "description": "You are a martial cultivator who commands sword mastery, demonic forms, and the mysterious power of Tao. The blade does not merely obey you — it fears you.", "fields": [
-            {"name": "⚔️ Your Role", "value": "You are a devastating melee combatant who chains rapid attacks using Tao. Your 24 Demonic Sword Forms let you stack damage through combo sequences, telekinetically control flying blades, and dominate the battlefield."},
-            {"name": "🎯 Class Fantasy", "value": "Through cultivation of internal Tao energy, you transcend normal swordsmanship. Each strike flows into the next — Demonic Strike into Bloody Sequence into Demonic Tempest — until your enemies have nowhere left to run. At your peak, you summon storms of flying swords and call down blade rain from the heavens."},
-        ]},
-        {"title": "Your Resources", "description": "Tao is everything.", "fields": [
-            {"name": "🌀 Tao Points", "value": "You start with **2 Tao** and gain more as you level. Tao fuels your 24 Demonic Sword Forms. If your Tao hits 0, your body collapses from exhaustion. Manage it carefully."},
-            {"name": "🤖 Nano System", "value": "Your internal combat AI gives you **advantage on initiative** and lets you **reroll one attack roll per turn**. You almost always strike first."},
-        ]},
-        {"title": "Your Attacks", "description": "The attacks you chose during creation.", "fields": []},
-        {"title": "Leveling Up", "description": "Your power grows with every level.", "fields": [
-            {"name": "Level 3 — Choose Your Path", "value": "**Path of the Heavenly Demon** (telekinetic sword master), **Path of the Blood Demon** (form combo specialist), or **Path of the Elemental Demon** (elemental devastation)."},
-            {"name": "Level 5 — Extra Attack + Intermediate Forms", "value": "Attack twice per turn. Unlock Intermediate Forms: Cross Slash, Demon Beast Strike, Demonic Dance, and more."},
-            {"name": "Level 15 — Supreme Forms", "value": "Unlock Supreme Forms: Absolute Demonic Destruction (12 attacks), Sword Rain, Hundred Blade Massacre, and Void Slash."},
-            {"name": "Level 20 — Heavenly Demon Ascension", "value": "Crit on 18-20, resistance to all damage, +300 ft movement. Enter **Absolute Heavenly Demon State** for an unstoppable 1-minute burst. Unleash **Sword Rain: Heavenly Demon Cataclysm** to devastate entire armies."},
-        ]},
-        {"title": "How to Play", "description": "Tips for mastering the Heavenly Demon arts.", "fields": [
-            {"name": "🌀 Manage Your Tao", "value": "Running out of Tao knocks you unconscious. Keep enough in reserve for emergencies. Perfect Tao Circulation (level 10) regenerates Tao every turn."},
-            {"name": "⚔️ Chain Your Forms", "value": "Each form flows into the next. Blood Demon path lets you chain 10 forms in a single turn — that's potentially 50+ attacks."},
-            {"name": "🗡️ Control Flying Swords", "value": "2 Tao per sword. They attack on your command and orbit you defensively. More swords = more damage."},
-            {"name": "💀 Save Your Ultimates", "value": "Heavenly Demon Catastrophe and Sword Rain are 1/long rest. Use them on bosses — they can end encounters instantly."},
-        ]},
-    ],
     "Warlock": [
         {"title": "Welcome, Warlock!", "description": "You made a pact with a being beyond mortal comprehension — and now you wield power that other spellcasters can only dream of.", "fields": [
             {"name": "🔮 Your Role", "value": "The Warlock is a magical marksman with limited but powerful spell slots. Your Eldritch Blast is the best damage cantrip in the game, and your short-rest recovery means you can keep fighting when other casters are spent."},
@@ -421,6 +370,39 @@ BACKGROUND_DESCRIPTIONS = {
     "Sage":      "Scholarly pursuits — Arcana & History",
     "Folk Hero": "Humble origins, great deeds — Survival & Animal Handling",
 }
+
+BACKGROUND_SKILLS: dict[str, list[str]] = {
+    "Acolyte":   ["Insight", "Religion"],
+    "Criminal":  ["Deception", "Stealth"],
+    "Soldier":   ["Athletics", "Intimidation"],
+    "Noble":     ["History", "Persuasion"],
+    "Sage":      ["Arcana", "History"],
+    "Folk Hero": ["Animal Handling", "Survival"],
+}
+
+CLASS_DEFAULT_SKILLS: dict[str, list[str]] = {
+    "Fighter":             ["Athletics", "Intimidation"],
+    "Rogue":               ["Stealth", "Deception", "Sleight of Hand", "Acrobatics"],
+    "Cleric":              ["Insight", "Religion"],
+    "Wizard":              ["Arcana", "History"],
+    "Barbarian":           ["Athletics", "Intimidation"],
+    "Warlock":             ["Deception", "Arcana"],
+    "Paladin":             ["Athletics", "Persuasion"],
+    "Ranger":              ["Survival", "Perception"],
+    "Druid":               ["Nature", "Animal Handling"],
+    "Bard":                ["Persuasion", "Performance"],
+    "Monk":                ["Acrobatics", "Stealth"],
+    "Sorcerer":            ["Arcana", "Persuasion"],
+}
+
+SKILL_LIST: list[tuple[str, str]] = [
+    ("Acrobatics", "dex"), ("Animal Handling", "wis"), ("Arcana", "int"),
+    ("Athletics", "str"), ("Deception", "cha"), ("History", "int"),
+    ("Insight", "wis"), ("Intimidation", "cha"), ("Investigation", "int"),
+    ("Medicine", "wis"), ("Nature", "int"), ("Perception", "wis"),
+    ("Performance", "cha"), ("Persuasion", "cha"), ("Religion", "int"),
+    ("Sleight of Hand", "dex"), ("Stealth", "dex"), ("Survival", "wis"),
+]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -481,13 +463,6 @@ def _starting_resources(char_class: str) -> dict:
         "Cleric":    {"channel_divinity": 1},
         "Wizard":    {"spell_slots": 2, "arcane_recovery": 1},
         "Rogue":     {"sneak_attack_dice": 1},
-        "Heavenly Demon Heir": {
-            "tao_current": 2, "tao_max": 2, "nano_system": True,
-            "hd_path": None, "hd_dual_wield": False, "controlled_swords": 0,
-            "absolute_state_used": False, "catastrophe_used": False,
-            "sword_rain_used": False, "elemental_type": None,
-            "tao_exhausted": False,
-        },
         "Paladin":   {"divine_smite_available": True},
         "Ranger":    {"hunters_mark_active": False, "hunters_mark_target": None},
         "Druid":     {"wild_shape_uses": 2, "beast_form": None, "beast_hp": 0},
@@ -529,46 +504,127 @@ async def resolve_character(user_id: int, guild_id: int) -> tuple:
 
 # ── Sheet embed ───────────────────────────────────────────────────────────────
 
-def build_sheet_embed(char: Character, active_title_display: str | None = None, active_title_color: int | None = None) -> discord.Embed:
+def build_sheet_embed(
+    char: Character,
+    active_title_display: str | None = None,
+    active_title_color: int | None = None,
+    bonds: list | None = None,
+    goals: list | None = None,
+) -> discord.Embed:
     stats = {
         "str": char.strength, "dex": char.dexterity, "con": char.constitution,
         "int": char.intelligence, "wis": char.wisdom, "cha": char.charisma,
     }
     pb = proficiency_bonus(char.level)
-    saves = CLASSES.get(char.char_class, {}).get("saves", [])
+    class_saves = CLASSES.get(char.char_class, {}).get("saves", [])
+
+    # Derive skill proficiencies (stored list takes priority, else class + background defaults)
+    stored_profs = set(char.skill_proficiencies or [])
+    if stored_profs:
+        skill_profs = stored_profs
+    else:
+        bg_profs = set(BACKGROUND_SKILLS.get(char.background or "", []))
+        cls_profs = set(CLASS_DEFAULT_SKILLS.get(char.char_class, [])[:2])
+        skill_profs = bg_profs | cls_profs
 
     active_tag = "  ★" if char.is_active else ""
-    embed_title = f"{active_title_display}  ·  {char.name}{active_tag}" if active_title_display else f"{char.name}{active_tag}"
+    dead_tag = "  💀" if char.is_dead else ""
+    embed_title = (
+        f"{active_title_display}  ·  {char.name}{active_tag}{dead_tag}"
+        if active_title_display
+        else f"{char.name}{active_tag}{dead_tag}"
+    )
+
+    desc_parts = [f"*{char.race}  ·  {char.char_class}  ·  Level {char.level}*"]
+    if char.background:
+        desc_parts.append(f"📜 {char.background}")
+
+    base_color = 0x6B7280 if char.is_dead else 0x8B5CF6
     embed = discord.Embed(
         title=embed_title,
-        description=f"*{char.race} {char.char_class} — Level {char.level}*",
-        color=active_title_color or 0x8B5CF6,
+        description="  ".join(desc_parts),
+        color=active_title_color or base_color,
     )
 
     if char.avatar_url:
         embed.set_thumbnail(url=char.avatar_url)
 
+    # ── HP bar + AC + Initiative ──────────────────────────────────────────────
+    hp_pct = max(0.0, min(1.0, char.hp_current / max(char.hp_max, 1)))
+    filled = round(hp_pct * 10)
+    hp_bar = "█" * filled + "░" * (10 - filled)
+    temp_hp_str = f"  +{char.hp_temp} THP" if char.hp_temp else ""
+    init = modifier(char.dexterity)
+    init_str = f"+{init}" if init >= 0 else str(init)
     embed.add_field(
-        name="HP / AC",
-        value=f"❤️ `{char.hp_current}/{char.hp_max}`  🛡️ `{char.armor_class}`",
+        name="HP  ·  AC  ·  Initiative",
+        value=(
+            f"❤️ `{hp_bar}` **{char.hp_current}/{char.hp_max}**{temp_hp_str}\n"
+            f"🛡️ AC **{char.armor_class}**  ·  ⚡ Init **{init_str}**  ·  Prof `+{pb}`"
+        ),
         inline=False,
     )
 
-    stat_lines = []
-    for abbr, label in STAT_LABELS.items():
+    # ── Ability scores (with save marks) ─────────────────────────────────────
+    score_col_a = []
+    score_col_b = []
+    for i, (abbr, label) in enumerate(STAT_LABELS.items()):
         score = stats[abbr]
-        save_mark = " ✦" if abbr in saves else ""
-        stat_lines.append(f"**{label[:3].upper()}** {score} ({mod_str(score)}){save_mark}")
-    embed.add_field(name="Ability Scores  (✦ = save prof.)", value="\n".join(stat_lines), inline=True)
+        save_mark = " ✦" if abbr in class_saves else ""
+        line = f"**{abbr.upper()}** {score:>2} ({mod_str(score)}){save_mark}"
+        if i < 3:
+            score_col_a.append(line)
+        else:
+            score_col_b.append(line)
+    embed.add_field(name="Ability Scores  (✦ save)", value="\n".join(score_col_a), inline=True)
+    embed.add_field(name="​", value="\n".join(score_col_b), inline=True)
 
-    embed.add_field(
-        name="Economy",
-        value=f"💰 {char.gold} gp\n📦 {len(char.inventory or [])} item(s)",
-        inline=True,
-    )
+    # Passive perception
+    wis_mod = modifier(char.wisdom)
+    pp = 10 + wis_mod + (pb if "Perception" in skill_profs else 0)
+    embed.add_field(name="Passive Perc.", value=f"**{pp}**", inline=True)
+
+    # ── Skills (D&D chars only — custom chars skip this block) ───────────────
+    if not char.is_custom:
+        skill_col_a_lines = []
+        skill_col_b_lines = []
+        for i, (skill_name, ability) in enumerate(SKILL_LIST):
+            base = modifier(stats[ability])
+            is_prof = skill_name in skill_profs
+            total = base + (pb if is_prof else 0)
+            sign = "+" if total >= 0 else ""
+            mark = "◆" if is_prof else "◇"
+            short = skill_name[:12]
+            line = f"{mark} {short:<12} {sign}{total}"
+            if i < 9:
+                skill_col_a_lines.append(line)
+            else:
+                skill_col_b_lines.append(line)
+        embed.add_field(
+            name="Skills  (◆ proficient)",
+            value="```\n" + "\n".join(skill_col_a_lines) + "\n```",
+            inline=True,
+        )
+        embed.add_field(
+            name="​",
+            value="```\n" + "\n".join(skill_col_b_lines) + "\n```",
+            inline=True,
+        )
+        embed.add_field(name="​", value="​", inline=True)
+
+    # ── XP / Gold ─────────────────────────────────────────────────────────────
     xp_display = xp_bar(char.xp, char.level)
-    embed.add_field(name="Progress", value=f"{xp_display}\nProf. Bonus: `+{pb}`", inline=True)
+    next_xp = xp_for_next_level(char.level)
+    embed.add_field(name="XP", value=f"{xp_display}\n{char.xp:,} / {next_xp:,}", inline=True)
+    embed.add_field(name="Gold", value=f"💰 **{char.gold:,}** gp", inline=True)
+    embed.add_field(name="Inventory", value=f"📦 {len(char.inventory or [])} item(s)", inline=True)
 
+    # ── Conditions ────────────────────────────────────────────────────────────
+    conditions = char.conditions or []
+    if conditions:
+        embed.add_field(name="Conditions", value="  ·  ".join(conditions[:10]), inline=False)
+
+    # ── Loadout / attacks ─────────────────────────────────────────────────────
     attacks = (char.class_resources or {}).get("attacks", [])
     if attacks:
         weapon_key = next(
@@ -580,78 +636,30 @@ def build_sheet_embed(char: Character, active_title_display: str | None = None, 
         attack_lines = [weapon_line] + [f"• {a}" for a in attacks]
         embed.add_field(name="Loadout", value="\n".join(attack_lines), inline=False)
 
-    # ── Heavenly Demon Heir — Auto-integrated class data ──
-    if char.char_class == "Heavenly Demon Heir":
-        res = dict(char.class_resources or {})
-        from cogs.heavenly_demon import _tao_max, _SWORD_MAX_TABLE, _res, ELEMENT_EMOJI, TIER_EMOJI
-
-        hd_tao_max = _tao_max(char)
-        hd_tao_cur = res.get("tao_current", 0)
-        hd_path = res.get("hd_path") or "None"
-        hd_swords = res.get("controlled_swords", 0)
-        hd_max_swords = _SWORD_MAX_TABLE.get(char.level, 1)
-        hd_dual = res.get("hd_dual_wield", False)
-        hd_element = res.get("elemental_type")
-        hd_exhausted = res.get("tao_exhausted", False)
-
-        # Tao bar
-        bar_filled = round((hd_tao_cur / max(hd_tao_max, 1)) * 10)
-        tao_bar = "█" * bar_filled + "░" * (10 - bar_filled)
-        tao_status = f"`{tao_bar}` **{hd_tao_cur}/{hd_tao_max}**"
-        if hd_exhausted:
-            tao_status += " 💀 **EXHAUSTED**"
-
-        hd_lines = []
-        hd_lines.append(f"🌀 **Tao:** {tao_status}")
-        hd_lines.append(f"⚔️ **Path:** {hd_path}")
-        hd_lines.append(f"🗡️ **Swords:** {hd_swords}/{hd_max_swords}")
-        hd_lines.append(f"⚔️ **Dual Wield:** {'Active 🗡️🗡️' if hd_dual else 'Off'}")
-
-        if hd_element:
-            emoji = ELEMENT_EMOJI.get(hd_element, "🌪️")
-            hd_lines.append(f"{emoji} **Element:** {hd_element}")
-
-        # Key features by level
-        hd_features = []
-        if char.level >= 2:
-            hd_features.append("Sword Flight")
-        if char.level >= 4:
-            hd_features.append("Phantom Step")
-        if char.level >= 5:
-            hd_features.append("Extra Attack")
-        if char.level >= 7:
-            hd_features.append("Sword Control")
-        if char.level >= 10:
-            hd_features.append("Perfect Tao Circ.")
-        if char.level >= 15:
-            hd_features.append("Heavenly Demon Body")
-        if char.level >= 20:
-            hd_features.append("Ascension")
-        if hd_features:
-            hd_lines.append(f"✨ **Features:** {', '.join(hd_features)}")
-
-        # Cooldowns used this rest
-        hd_cooldowns = []
-        if res.get("absolute_state_used"):
-            hd_cooldowns.append("Absolute State")
-        if res.get("catastrophe_used"):
-            hd_cooldowns.append("Catastrophe")
-        if res.get("sword_rain_used"):
-            hd_cooldowns.append("Sword Rain")
-        if hd_cooldowns:
-            hd_lines.append(f"🔒 **Used:** {', '.join(hd_cooldowns)} (1/long rest)")
-
-        embed.add_field(name="🌌 Heavenly Demon Heir", value="\n".join(hd_lines), inline=False)
-
+    # ── Backstory ─────────────────────────────────────────────────────────────
     if char.backstory:
         embed.add_field(name="Backstory", value=char.backstory[:500], inline=False)
 
-    proxy_text = ""
-    if char.proxy_open or char.proxy_close:
-        proxy_text = f"`{char.proxy_open or ''}text{char.proxy_close or ''}`"
-        embed.add_field(name="Proxy", value=proxy_text, inline=False)
+    # ── Bonds (passed in from caller to avoid async in sync function) ─────────
+    if bonds:
+        bond_lines = [f"💛 **{b['name']}** — {b['desc'][:80]}" for b in bonds[:4]]
+        embed.add_field(name="Bonds", value="\n".join(bond_lines), inline=False)
 
-    embed.set_footer(text=f"Background: {char.background or 'None'}  •  LoreForge")
+    # ── Active goals ──────────────────────────────────────────────────────────
+    if goals:
+        goal_lines = [f"🎯 {g[:90]}" for g in goals[:3]]
+        embed.add_field(name="Goals", value="\n".join(goal_lines), inline=False)
+
+    # ── Proxy ─────────────────────────────────────────────────────────────────
+    if char.proxy_open or char.proxy_close:
+        embed.add_field(
+            name="Proxy",
+            value=f"`{char.proxy_open or ''}text{char.proxy_close or ''}`",
+            inline=False,
+        )
+
+    custom_tag = "Custom" if char.is_custom else "D&D 5e"
+    embed.set_footer(text=f"{custom_tag}  ·  Background: {char.background or 'None'}  •  LoreForge")
     return embed
 
 # ── Step embeds ───────────────────────────────────────────────────────────────
@@ -851,8 +859,19 @@ class CharacterPickSelect(discord.ui.Select):
         if action == "sheet":
             async with get_db() as db:
                 active = await get_active_title(db, char.id)
+            bonds, goals = [], []
+            try:
+                from cogs.bonds import get_character_bonds
+                bonds = await get_character_bonds(char.id)
+            except Exception:
+                pass
+            try:
+                goals = await _load_active_goals(char.id)
+            except Exception:
+                pass
             embed = build_sheet_embed(char, active_title_display=active[0] if active else None,
-                                           active_title_color=active[1] if active else None)
+                                           active_title_color=active[1] if active else None,
+                                           bonds=bonds, goals=goals)
             await interaction.response.edit_message(embed=embed, view=SheetView(char))
 
         elif action == "show":
@@ -897,10 +916,24 @@ class CharacterPickSelect(discord.ui.Select):
                 )
                 for c in result.scalars().all():
                     c.is_active = (c.id == char_id)
+                # Re-fetch with is_active set correctly
+                fresh_result = await db.execute(select(Character).where(Character.id == char_id))
+                char = fresh_result.scalar_one_or_none() or char
+            bonds, goals = [], []
+            try:
+                from cogs.bonds import get_character_bonds
+                bonds = await get_character_bonds(char.id)
+            except Exception:
+                pass
+            try:
+                goals = await _load_active_goals(char.id)
+            except Exception:
+                pass
+            embed = build_sheet_embed(char, bonds=bonds, goals=goals)
             await interaction.response.edit_message(
-                content=f"✅ **{char.name}** is now your active character. All commands will use them automatically.",
-                embed=None,
-                view=None,
+                content=f"✅ **{char.name}** is now your active character!",
+                embed=embed,
+                view=SheetView(char),
             )
 
 
@@ -1665,6 +1698,27 @@ class SheetView(discord.ui.View):
                 return
             await interaction.response.send_modal(CosmeticEditModal(char.id))
 
+    @discord.ui.button(label="Edit Everything ✏️", style=discord.ButtonStyle.primary)
+    async def edit_everything(self, interaction: discord.Interaction, button: discord.ui.Button):
+        async with get_db() as db:
+            result = await db.execute(select(Character).where(Character.id == self.char.id))
+            char = result.scalar_one_or_none()
+        if not char:
+            await interaction.response.send_message("Character not found.", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title=f"✏️ Full Edit — {char.name}",
+            description=(
+                "Choose a section to edit. Each button opens a 5-field form.\n\n"
+                "**🎲 Stats** — STR, DEX, CON, INT, WIS\n"
+                "**❤️ Combat** — CHA, HP Max, HP Current, AC, Temp HP\n"
+                "**📖 Identity** — Name, Race, Class, Background, Level\n"
+                "**🖼️ Cosmetics** — Backstory, Avatar, Proxy, Gold, XP"
+            ),
+            color=0x6366F1,
+        )
+        await interaction.response.send_message(embed=embed, view=FullEditView(char.id, char.is_custom), ephemeral=True)
+
 
 class CosmeticEditModal(discord.ui.Modal, title="Edit Cosmetics"):
     char_name = discord.ui.TextInput(
@@ -1726,6 +1780,266 @@ class CosmeticEditModal(discord.ui.Modal, title="Edit Cosmetics"):
             if self.proxy_close.value.strip():
                 char.proxy_close = self.proxy_close.value.strip()
         await interaction.response.send_message("✅ Cosmetics updated!", ephemeral=True)
+
+
+# ── Full Edit View + Modals ───────────────────────────────────────────────────
+
+class FullEditView(discord.ui.View):
+    def __init__(self, char_id: int, is_custom: bool):
+        super().__init__(timeout=300)
+        self.char_id = char_id
+        self.is_custom = is_custom
+
+    @discord.ui.button(label="🎲 Stats", style=discord.ButtonStyle.primary)
+    async def edit_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(StatEditModal(self.char_id, self.is_custom))
+
+    @discord.ui.button(label="❤️ Combat", style=discord.ButtonStyle.primary)
+    async def edit_combat(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CombatEditModal(self.char_id, self.is_custom))
+
+    @discord.ui.button(label="📖 Identity", style=discord.ButtonStyle.secondary)
+    async def edit_identity(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(IdentityEditModal(self.char_id, self.is_custom))
+
+    @discord.ui.button(label="🖼️ Cosmetics", style=discord.ButtonStyle.secondary)
+    async def edit_cosmetics_full(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(FullCosmeticEditModal(self.char_id))
+
+
+class StatEditModal(discord.ui.Modal, title="Edit Ability Scores"):
+    str_val = discord.ui.TextInput(label="Strength (1–30)", style=discord.TextStyle.short, required=False, max_length=3)
+    dex_val = discord.ui.TextInput(label="Dexterity (1–30)", style=discord.TextStyle.short, required=False, max_length=3)
+    con_val = discord.ui.TextInput(label="Constitution (1–30)", style=discord.TextStyle.short, required=False, max_length=3)
+    int_val = discord.ui.TextInput(label="Intelligence (1–30)", style=discord.TextStyle.short, required=False, max_length=3)
+    wis_val = discord.ui.TextInput(label="Wisdom (1–30)", style=discord.TextStyle.short, required=False, max_length=3)
+
+    def __init__(self, char_id: int, is_custom: bool):
+        super().__init__()
+        self.char_id = char_id
+        self.is_custom = is_custom
+
+    async def on_submit(self, interaction: discord.Interaction):
+        field_map = {
+            "strength": self.str_val.value,
+            "dexterity": self.dex_val.value,
+            "constitution": self.con_val.value,
+            "intelligence": self.int_val.value,
+            "wisdom": self.wis_val.value,
+        }
+        updates: dict = {}
+        for attr, raw in field_map.items():
+            raw = raw.strip()
+            if not raw:
+                continue
+            if not raw.isdigit() or not (1 <= int(raw) <= 30):
+                await interaction.response.send_message(f"Invalid value for {attr}: must be 1–30.", ephemeral=True)
+                return
+            updates[attr] = int(raw)
+
+        if not updates:
+            await interaction.response.send_message("No changes made.", ephemeral=True)
+            return
+
+        if self.is_custom:
+            async with get_db() as db:
+                result = await db.execute(select(Character).where(Character.id == self.char_id))
+                char = result.scalar_one_or_none()
+                if not char:
+                    await interaction.response.send_message("Character not found.", ephemeral=True)
+                    return
+                for attr, val in updates.items():
+                    setattr(char, attr, val)
+            await interaction.response.send_message("✅ Stats updated!", ephemeral=True)
+        else:
+            # D&D characters: queue a pending edit request for GM approval
+            from database.models import PendingApproval
+            from datetime import datetime
+            async with get_db() as db:
+                result = await db.execute(select(Character).where(Character.id == self.char_id))
+                char = result.scalar_one_or_none()
+                if not char:
+                    await interaction.response.send_message("Character not found.", ephemeral=True)
+                    return
+                db.add(PendingApproval(
+                    character_id=char.id,
+                    guild_id=char.guild_id,
+                    user_id=char.user_id,
+                    character_name=char.name,
+                    field_name=", ".join(updates.keys()),
+                    old_value=str({k: getattr(char, k) for k in updates}),
+                    new_value=str(updates),
+                    requested_at=datetime.utcnow(),
+                ))
+            await interaction.response.send_message(
+                "📩 Stat change request submitted — a GM will review it.", ephemeral=True
+            )
+
+
+class CombatEditModal(discord.ui.Modal, title="Edit Combat Stats"):
+    cha_val = discord.ui.TextInput(label="Charisma (1–30)", style=discord.TextStyle.short, required=False, max_length=3)
+    hp_max = discord.ui.TextInput(label="HP Maximum", style=discord.TextStyle.short, required=False, max_length=5)
+    hp_cur = discord.ui.TextInput(label="HP Current", style=discord.TextStyle.short, required=False, max_length=5)
+    ac_val = discord.ui.TextInput(label="Armor Class", style=discord.TextStyle.short, required=False, max_length=3)
+    temp_hp = discord.ui.TextInput(label="Temp HP", style=discord.TextStyle.short, required=False, max_length=5)
+
+    def __init__(self, char_id: int, is_custom: bool):
+        super().__init__()
+        self.char_id = char_id
+        self.is_custom = is_custom
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw_map = {
+            "charisma": self.cha_val.value.strip(),
+            "hp_max": self.hp_max.value.strip(),
+            "hp_current": self.hp_cur.value.strip(),
+            "armor_class": self.ac_val.value.strip(),
+            "hp_temp": self.temp_hp.value.strip(),
+        }
+        updates: dict = {}
+        for attr, raw in raw_map.items():
+            if not raw:
+                continue
+            if not raw.lstrip("-").isdigit():
+                await interaction.response.send_message(f"Invalid value for {attr}.", ephemeral=True)
+                return
+            updates[attr] = int(raw)
+
+        if not updates:
+            await interaction.response.send_message("No changes made.", ephemeral=True)
+            return
+
+        async with get_db() as db:
+            result = await db.execute(select(Character).where(Character.id == self.char_id))
+            char = result.scalar_one_or_none()
+            if not char:
+                await interaction.response.send_message("Character not found.", ephemeral=True)
+                return
+            if self.is_custom:
+                for attr, val in updates.items():
+                    setattr(char, attr, val)
+                await interaction.response.send_message("✅ Combat stats updated!", ephemeral=True)
+            else:
+                # Instant for HP current and temp; queue approval for hp_max and armor_class
+                instant = {k: v for k, v in updates.items() if k in ("hp_current", "hp_temp", "charisma")}
+                approval_needed = {k: v for k, v in updates.items() if k not in ("hp_current", "hp_temp", "charisma")}
+                for attr, val in instant.items():
+                    setattr(char, attr, val)
+                if approval_needed:
+                    from database.models import PendingApproval
+                    from datetime import datetime
+                    db.add(PendingApproval(
+                        character_id=char.id,
+                        guild_id=char.guild_id,
+                        user_id=char.user_id,
+                        character_name=char.name,
+                        field_name=", ".join(approval_needed.keys()),
+                        old_value=str({k: getattr(char, k) for k in approval_needed}),
+                        new_value=str(approval_needed),
+                        requested_at=datetime.utcnow(),
+                    ))
+                msg = "✅ HP/Temp HP updated!"
+                if approval_needed:
+                    msg += "  📩 HP Max / AC change submitted for GM review."
+                await interaction.response.send_message(msg, ephemeral=True)
+
+
+class IdentityEditModal(discord.ui.Modal, title="Edit Identity"):
+    name_val = discord.ui.TextInput(label="Character Name", style=discord.TextStyle.short, required=False, max_length=32)
+    race_val = discord.ui.TextInput(label="Race / Species", style=discord.TextStyle.short, required=False, max_length=50)
+    class_val = discord.ui.TextInput(label="Class", style=discord.TextStyle.short, required=False, max_length=50)
+    bg_val = discord.ui.TextInput(label="Background", style=discord.TextStyle.short, required=False, max_length=50)
+    level_val = discord.ui.TextInput(label="Level (1–20)  [GM only for D&D]", style=discord.TextStyle.short, required=False, max_length=2)
+
+    def __init__(self, char_id: int, is_custom: bool):
+        super().__init__()
+        self.char_id = char_id
+        self.is_custom = is_custom
+
+    async def on_submit(self, interaction: discord.Interaction):
+        async with get_db() as db:
+            result = await db.execute(select(Character).where(Character.id == self.char_id))
+            char = result.scalar_one_or_none()
+            if not char:
+                await interaction.response.send_message("Character not found.", ephemeral=True)
+                return
+
+            if self.name_val.value.strip():
+                char.name = self.name_val.value.strip()
+            if self.race_val.value.strip():
+                char.race = self.race_val.value.strip()
+            if self.class_val.value.strip():
+                char.char_class = self.class_val.value.strip()
+            if self.bg_val.value.strip():
+                char.background = self.bg_val.value.strip()
+
+            level_raw = self.level_val.value.strip()
+            level_queued = False
+            if level_raw:
+                if not level_raw.isdigit() or not (1 <= int(level_raw) <= 20):
+                    await interaction.response.send_message("Level must be 1–20.", ephemeral=True)
+                    return
+                new_level = int(level_raw)
+                if self.is_custom:
+                    char.level = new_level
+                else:
+                    from database.models import PendingApproval
+                    from datetime import datetime
+                    db.add(PendingApproval(
+                        character_id=char.id,
+                        guild_id=char.guild_id,
+                        user_id=char.user_id,
+                        character_name=char.name,
+                        field_name="level",
+                        old_value=str(char.level),
+                        new_value=str(new_level),
+                        requested_at=datetime.utcnow(),
+                    ))
+                    level_queued = True
+
+        msg = "✅ Identity updated!"
+        if level_queued:
+            msg += "  📩 Level change submitted for GM review."
+        await interaction.response.send_message(msg, ephemeral=True)
+
+
+class FullCosmeticEditModal(discord.ui.Modal, title="Edit Cosmetics & Economy"):
+    backstory_val = discord.ui.TextInput(label="Backstory", style=discord.TextStyle.paragraph, required=False, max_length=1000)
+    avatar_val = discord.ui.TextInput(label="Avatar URL", style=discord.TextStyle.short, required=False, max_length=500)
+    proxy_open_val = discord.ui.TextInput(label="Proxy Opening (e.g. [[ )", style=discord.TextStyle.short, required=False, max_length=10)
+    proxy_close_val = discord.ui.TextInput(label="Proxy Closing (e.g. ]] )", style=discord.TextStyle.short, required=False, max_length=10)
+    gold_val = discord.ui.TextInput(label="Gold (gp)", style=discord.TextStyle.short, required=False, max_length=10)
+
+    def __init__(self, char_id: int):
+        super().__init__()
+        self.char_id = char_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        async with get_db() as db:
+            result = await db.execute(select(Character).where(Character.id == self.char_id))
+            char = result.scalar_one_or_none()
+            if not char:
+                await interaction.response.send_message("Character not found.", ephemeral=True)
+                return
+            if self.backstory_val.value.strip():
+                char.backstory = self.backstory_val.value.strip()
+            avatar_raw = self.avatar_val.value.strip()
+            if avatar_raw:
+                if not await _is_valid_image_url(avatar_raw):
+                    await interaction.response.send_message("Invalid image URL.", ephemeral=True)
+                    return
+                char.avatar_url = avatar_raw
+            if self.proxy_open_val.value.strip():
+                char.proxy_open = self.proxy_open_val.value.strip()
+            if self.proxy_close_val.value.strip():
+                char.proxy_close = self.proxy_close_val.value.strip()
+            gold_raw = self.gold_val.value.strip()
+            if gold_raw:
+                if not gold_raw.lstrip("-").isdigit():
+                    await interaction.response.send_message("Invalid gold value.", ephemeral=True)
+                    return
+                char.gold = max(0, int(gold_raw))
+        await interaction.response.send_message("✅ Cosmetics & economy updated!", ephemeral=True)
 
 
 # ── Delete confirm ────────────────────────────────────────────────────────────
@@ -1952,13 +2266,29 @@ async def character_use(interaction: discord.Interaction):
         return
 
     if len(chars) == 1:
+        char = chars[0]
         async with get_db() as db:
-            result = await db.execute(select(Character).where(Character.id == chars[0].id))
+            result = await db.execute(select(Character).where(Character.id == char.id))
             c = result.scalar_one_or_none()
             if c:
                 c.is_active = True
+                char = c
+        bonds, goals = [], []
+        try:
+            from cogs.bonds import get_character_bonds
+            bonds = await get_character_bonds(char.id)
+        except Exception:
+            pass
+        try:
+            goals = await _load_active_goals(char.id)
+        except Exception:
+            pass
+        embed = build_sheet_embed(char, bonds=bonds, goals=goals)
         await interaction.followup.send(
-            f"✅ **{chars[0].name}** is your active character.", ephemeral=True
+            content=f"✅ **{char.name}** is now your active character!",
+            embed=embed,
+            view=SheetView(char),
+            ephemeral=True,
         )
         return
 
@@ -2015,8 +2345,19 @@ async def character_sheet(interaction: discord.Interaction):
         view = SheetView(char)
         async with get_db() as db:
             active = await get_active_title(db, char.id)
+        bonds, goals = [], []
+        try:
+            from cogs.bonds import get_character_bonds
+            bonds = await get_character_bonds(char.id)
+        except Exception:
+            pass
+        try:
+            goals = await _load_active_goals(char.id)
+        except Exception:
+            pass
         embed = build_sheet_embed(char, active_title_display=active[0] if active else None,
-                                       active_title_color=active[1] if active else None)
+                                       active_title_color=active[1] if active else None,
+                                       bonds=bonds, goals=goals)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
     else:
         await interaction.followup.send(
@@ -2124,6 +2465,8 @@ async def character_list(interaction: discord.Interaction, public: bool = False)
     for char in chars:
         if char.is_dead:
             status = "💀 Dead"
+        elif getattr(char, "is_retired", False):
+            status = "🕊️ [RETIRED]"
         elif char.is_unconscious:
             status = "😵 Unconscious"
         elif char.is_active:
@@ -2860,7 +3203,8 @@ async def character_retire(interaction: discord.Interaction):
                 if not c:
                     await interaction2.response.send_message("Character not found.", ephemeral=True)
                     return
-                c.is_dead = True
+                c.is_retired = True
+                c.is_active = False
                 c.retired_at = datetime.now(timezone.utc)
                 # Also create an NPC entry in their current location
                 from database.models import NPC, CharacterLocation
@@ -3166,6 +3510,258 @@ async def character_visions(interaction: discord.Interaction, character: str = N
 
     view = VisionView(visions, page=1)
     await interaction.followup.send(embed=view._build_embed(), view=view, ephemeral=True)
+
+
+# ── /character history ────────────────────────────────────────────────────────
+
+@character_group.command(name="history", description="Full log of stat changes and XP awards for your active character")
+async def character_history(interaction: discord.Interaction):
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works inside a server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    char, _ = await resolve_character(interaction.user.id, interaction.guild_id)
+    if not char:
+        await interaction.followup.send("You don't have an active character.", ephemeral=True)
+        return
+
+    async with get_db() as db:
+        result = await db.execute(
+            select(PendingApproval)
+            .where(
+                PendingApproval.character_id == char.id,
+                PendingApproval.status.in_(["approved", "denied"]),
+            )
+            .order_by(PendingApproval.requested_at.desc())
+            .limit(30)
+        )
+        records = list(result.scalars().all())
+
+    if not records:
+        await interaction.followup.send(
+            f"No recorded stat changes for **{char.name}** yet.", ephemeral=True
+        )
+        return
+
+    embed = discord.Embed(
+        title=f"📋 {char.name} — Change History",
+        color=0x8B5CF6,
+    )
+    for rec in records:
+        icon = "✅" if rec.status == "approved" else "❌"
+        ts = int(rec.reviewed_at.timestamp()) if rec.reviewed_at else int(rec.requested_at.timestamp())
+        embed.add_field(
+            name=f"{icon} {rec.field_name.upper()}  {rec.old_value} → {rec.new_value}",
+            value=f"{rec.reason or 'No reason given'}\n<t:{ts}:R>",
+            inline=False,
+        )
+    embed.set_footer(text=f"Showing last {len(records)} records  •  LoreForge")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ── /character compare ────────────────────────────────────────────────────────
+
+@character_group.command(name="compare", description="Compare your active character's stats with another player's")
+@app_commands.describe(user="The player to compare against")
+async def character_compare(interaction: discord.Interaction, user: discord.Member):
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works inside a server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    my_char, _ = await resolve_character(interaction.user.id, interaction.guild_id)
+    if not my_char:
+        await interaction.followup.send("You don't have an active character.", ephemeral=True)
+        return
+
+    their_char, _ = await resolve_character(user.id, interaction.guild_id)
+    if not their_char:
+        await interaction.followup.send(f"{user.display_name} doesn't have an active character.", ephemeral=True)
+        return
+
+    def _m(score): return math.floor((score - 10) / 2)
+    def _ms(score): m = _m(score); return f"+{m}" if m >= 0 else str(m)
+
+    embed = discord.Embed(
+        title="⚔️ Character Comparison",
+        color=0x8B5CF6,
+    )
+
+    def _char_block(c: Character) -> str:
+        return (
+            f"**{c.name}**\n"
+            f"{c.race} {c.char_class} — Lv{c.level}\n"
+            f"❤️ {c.hp_current}/{c.hp_max}  🛡️ AC {c.armor_class}\n"
+            f"STR {c.strength} ({_ms(c.strength)})  "
+            f"DEX {c.dexterity} ({_ms(c.dexterity)})  "
+            f"CON {c.constitution} ({_ms(c.constitution)})\n"
+            f"INT {c.intelligence} ({_ms(c.intelligence)})  "
+            f"WIS {c.wisdom} ({_ms(c.wisdom)})  "
+            f"CHA {c.charisma} ({_ms(c.charisma)})"
+        )
+
+    embed.add_field(name=interaction.user.display_name, value=_char_block(my_char), inline=True)
+    embed.add_field(name=user.display_name, value=_char_block(their_char), inline=True)
+    embed.set_footer(text="LoreForge")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ── Goal helpers ──────────────────────────────────────────────────────────────
+
+async def _load_active_goals(character_id: int) -> list[str]:
+    """Return list of active goal texts for the character sheet."""
+    try:
+        from database.models import CharacterGoal
+        async with get_db() as db:
+            result = await db.execute(
+                select(CharacterGoal).where(
+                    CharacterGoal.character_id == character_id,
+                    CharacterGoal.is_completed == False,
+                ).limit(5)
+            )
+            return [g.text for g in result.scalars().all()]
+    except Exception:
+        return []
+
+
+# ── Character Goal subcommands ────────────────────────────────────────────────
+
+goal_group = app_commands.Group(
+    name="goal", description="Set and track your character's personal goals", parent=character_group
+)
+
+
+@goal_group.command(name="set", description="Add or update a goal for your character")
+@app_commands.describe(text="Describe the goal (e.g. 'Avenge my fallen village')")
+async def goal_set(interaction: discord.Interaction, text: str):
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works in a server.", ephemeral=True)
+        return
+
+    char, _ = await resolve_character(interaction.user.id, interaction.guild_id)
+    if not char:
+        await interaction.response.send_message("You need an active character. Use `/character use` first.", ephemeral=True)
+        return
+
+    from database.models import CharacterGoal
+    async with get_db() as db:
+        goal = CharacterGoal(
+            character_id=char.id,
+            guild_id=interaction.guild_id,
+            user_id=interaction.user.id,
+            text=text,
+        )
+        db.add(goal)
+        await db.flush()
+        goal_id = goal.id
+
+    embed = discord.Embed(
+        title="🎯 Goal Added",
+        description=f"**{char.name}** — *{text}*",
+        color=0x10B981,
+    )
+    embed.set_footer(text=f"Goal #{goal_id}  ·  Use /character goal view to see all goals  •  LoreForge")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@goal_group.command(name="view", description="View your character's active and completed goals")
+async def goal_view(interaction: discord.Interaction):
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works in a server.", ephemeral=True)
+        return
+
+    char, _ = await resolve_character(interaction.user.id, interaction.guild_id)
+    if not char:
+        await interaction.response.send_message("You need an active character.", ephemeral=True)
+        return
+
+    from database.models import CharacterGoal
+    async with get_db() as db:
+        result = await db.execute(
+            select(CharacterGoal)
+            .where(CharacterGoal.character_id == char.id)
+            .order_by(CharacterGoal.created_at.desc())
+            .limit(20)
+        )
+        goals = list(result.scalars().all())
+
+    if not goals:
+        await interaction.response.send_message(
+            f"**{char.name}** has no goals yet. Use `/character goal set <text>` to add one.", ephemeral=True
+        )
+        return
+
+    embed = discord.Embed(title=f"🎯 {char.name}'s Goals", color=0x10B981)
+    active = [g for g in goals if not g.is_completed]
+    done = [g for g in goals if g.is_completed]
+    if active:
+        embed.add_field(
+            name="Active",
+            value="\n".join(f"`#{g.id}` {g.text}" for g in active),
+            inline=False,
+        )
+    if done:
+        embed.add_field(
+            name="Completed",
+            value="\n".join(f"~~`#{g.id}` {g.text}~~" for g in done[:5]),
+            inline=False,
+        )
+    embed.set_footer(text="LoreForge  •  Goals also show on your character sheet")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@goal_group.command(name="complete", description="Mark a goal as completed")
+@app_commands.describe(goal_id="Goal ID (shown in /character goal view)")
+async def goal_complete(interaction: discord.Interaction, goal_id: int):
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works in a server.", ephemeral=True)
+        return
+
+    from database.models import CharacterGoal
+    from datetime import datetime
+    async with get_db() as db:
+        result = await db.execute(
+            select(CharacterGoal).where(
+                CharacterGoal.id == goal_id,
+                CharacterGoal.user_id == interaction.user.id,
+            )
+        )
+        goal = result.scalar_one_or_none()
+        if not goal:
+            await interaction.response.send_message("Goal not found or you don't own it.", ephemeral=True)
+            return
+        goal.is_completed = True
+        goal.completed_at = datetime.utcnow()
+        text = goal.text
+
+    await interaction.response.send_message(
+        f"🏆 Goal completed: *{text}*", ephemeral=True
+    )
+
+
+@goal_group.command(name="delete", description="Delete a goal")
+@app_commands.describe(goal_id="Goal ID to delete")
+async def goal_delete(interaction: discord.Interaction, goal_id: int):
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works in a server.", ephemeral=True)
+        return
+
+    from database.models import CharacterGoal
+    async with get_db() as db:
+        result = await db.execute(
+            select(CharacterGoal).where(
+                CharacterGoal.id == goal_id,
+                CharacterGoal.user_id == interaction.user.id,
+            )
+        )
+        goal = result.scalar_one_or_none()
+        if not goal:
+            await interaction.response.send_message("Goal not found or you don't own it.", ephemeral=True)
+            return
+        await db.delete(goal)
+
+    await interaction.response.send_message(f"Goal #{goal_id} deleted.", ephemeral=True)
 
 
 # ── Cog ───────────────────────────────────────────────────────────────────────

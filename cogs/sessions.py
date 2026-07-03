@@ -4,9 +4,8 @@ from discord.ext import commands
 from sqlalchemy import select, desc
 from datetime import datetime
 from database.session import get_db
-from database.models import SessionLog, AIConfig, Character, GuildConfig
-from services.utils import gm_only
-from services.ai_service import summarize_session, generate_session_recap
+from database.models import SessionLog, Character, GuildConfig, SessionNote, TimelineEvent, TimelineLoreLink
+from services.utils import gm_only, is_gm
 from sqlalchemy.orm.attributes import flag_modified
 
 session_group = app_commands.Group(name="session", description="Session management (GM only)")
@@ -85,51 +84,27 @@ async def session_end(interaction: discord.Interaction):
             return
 
         log.ended_at = datetime.utcnow()
-
-        # Check if AI summaries are enabled
-        ai_config = await db.execute(
-            select(AIConfig).where(AIConfig.guild_id == interaction.guild_id)
-        )
-        config = ai_config.scalar_one_or_none()
-        ai_enabled = config and config.session_summary_enabled
-
-    # Try to generate summary
-    summary_text = None
-    if ai_enabled:
-        last_messages = []
+        # Stamp in-world date at end
         try:
-            async for msg in interaction.channel.history(limit=100):
-                if not msg.author.bot:
-                    last_messages.append(f"{msg.author.display_name}: {msg.content}")
-                elif msg.embeds:
-                    for e in msg.embeds:
-                        if e.title and ("HP" in e.title or "HIT" in e.title or "damage" in (e.description or "")):
-                            last_messages.append(f"[Combat Event] {e.title}: {e.description}")
+            from cogs.calendar import get_current_in_world_date
+            iwd = await get_current_in_world_date(interaction.guild_id)
+            if iwd:
+                log.in_world_date = iwd
         except Exception:
             pass
-
-        message_text = "\n".join(last_messages[-80:])
-        summary_text = await summarize_session(
-            messages_text=message_text,
-            characters=log.characters_present or [],
-            location=interaction.channel.name,
-            combat_count=log.combat_count or 0,
-            quest_completions=log.quest_completions or 0,
-            total_xp=log.total_xp or 0,
-        )
+        session_id_closed = log.id
 
     async with get_db() as db:
-        result = await db.execute(
-            select(SessionLog).where(SessionLog.id == log.id)
-        )
+        result = await db.execute(select(SessionLog).where(SessionLog.id == session_id_closed))
         log = result.scalar_one_or_none()
-        if log and summary_text:
-            log.summary_text = summary_text
+    summary_text = log.summary_text if log else None
 
     embed = discord.Embed(
         title=f"📜 Session Ended — {log.title if log else 'Session'}",
         color=0x6366F1,
     )
+    if getattr(log, "in_world_date", None):
+        embed.add_field(name="📅 In-World Date", value=log.in_world_date, inline=True)
     embed.add_field(name="⏱️ Duration", value="Active", inline=True)
     embed.add_field(name="⚔️ Combats", value=str(log.combat_count or 0), inline=True)
     embed.add_field(name="📋 Quests", value=str(log.quest_completions or 0), inline=True)
@@ -146,72 +121,11 @@ async def session_end(interaction: discord.Interaction):
     embed.set_footer(text="LoreForge Session Log")
     await interaction.followup.send(embed=embed)
 
-    # ── Phase 6: AI Recap → recap channel + LoreEntry ──────────────────────
-    try:
-        async with get_db() as db:
-            gc = await db.execute(
-                select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id)
-            )
-            config = gc.scalar_one_or_none()
-        recap_channel_id = config.session_recap_channel_id if config else None
-
-        if recap_channel_id:
-            # Get last 20 WorldEvents for guild
-            from database.models import WorldEvent
-            async with get_db() as db:
-                we_result = await db.execute(
-                    select(WorldEvent).where(
-                        WorldEvent.guild_id == interaction.guild_id
-                    ).order_by(desc(WorldEvent.created_at)).limit(20)
-                )
-                world_events = list(we_result.scalars().all())
-            event_descriptions = [f"{e.event_type}: {e.narrative or e.event_type}" for e in world_events]
-            character_names = log.characters_present or []
-
-            recap_text = await generate_session_recap(event_descriptions, character_names)
-
-            if recap_channel_id:
-                recap_channel = interaction.guild.get_channel(recap_channel_id)
-                if recap_channel:
-                    recap_embed = discord.Embed(
-                        title="📜 Session Recap",
-                        description=recap_text,
-                        color=0x8B5CF6,
-                    )
-                    recap_embed.set_footer(text=f"Session #{log.id} • LoreForge")
-                    await recap_channel.send(embed=recap_embed)
-
-            # Save recap as LoreEntry
-            async with get_db() as db2:
-                from database.models import LoreEntry
-                session_number = log.title or f"Session {log.id}"
-                # Check if already exists
-                existing_recap = await db2.execute(
-                    select(LoreEntry).where(
-                        LoreEntry.guild_id == interaction.guild_id,
-                        LoreEntry.title.ilike(f"{session_number} Recap"),
-                    )
-                )
-                if not existing_recap.scalar_one_or_none():
-                    db2.add(LoreEntry(
-                        guild_id=interaction.guild_id,
-                        title=f"{session_number} Recap",
-                        content=recap_text,
-                        category="session",
-                        visibility="gm_only",
-                        tags=["session", "recap"],
-                        created_by=interaction.user.id,
-                    ))
-    except Exception as e:
-        print(f"[SessionRecap] Error posting recap: {e}")
 
 
-@session_group.command(name="summary", description="Generate or regenerate the summary for the most recent session")
+@session_group.command(name="summary", description="View the summary and notes for the most recent session")
 async def session_summary(interaction: discord.Interaction):
-    if not await gm_only(interaction):
-        return
-
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     async with get_db() as db:
         result = await db.execute(
             select(SessionLog).where(
@@ -220,56 +134,23 @@ async def session_summary(interaction: discord.Interaction):
             ).order_by(desc(SessionLog.started_at)).limit(1)
         )
         log = result.scalar_one_or_none()
-
         if not log:
-            await interaction.followup.send(
-                "No sessions found in this channel.", ephemeral=True
-            )
+            await interaction.followup.send("No sessions found in this channel.", ephemeral=True)
             return
-
-    # Get messages
-    last_messages = []
-    try:
-        async for msg in interaction.channel.history(limit=100):
-            if not msg.author.bot:
-                last_messages.append(f"{msg.author.display_name}: {msg.content}")
-    except Exception:
-        pass
-
-    message_text = "\n".join(last_messages[-80:])
-    summary = await summarize_session(
-        messages_text=message_text,
-        characters=log.characters_present or [],
-        location=interaction.channel.name,
-        combat_count=log.combat_count or 0,
-        quest_completions=log.quest_completions or 0,
-        total_xp=log.total_xp or 0,
-    )
-
-    async with get_db() as db:
-        result = await db.execute(
-            select(SessionLog).where(SessionLog.id == log.id)
+        notes_result = await db.execute(
+            select(SessionNote).where(SessionNote.session_id == log.id).order_by(SessionNote.timestamp.asc())
         )
-        log = result.scalar_one_or_none()
-        if log and summary:
-            log.summary_text = summary
+        notes = list(notes_result.scalars().all())
 
-    embed = discord.Embed(
-        title="📜 Session Summary",
-        color=0x6366F1,
-    )
-    embed.add_field(name="🎭 Characters", value=", ".join(log.characters_present or []) or "None", inline=False)
-    embed.add_field(name="⚔️ Combats", value=str(log.combat_count or 0), inline=True)
-    embed.add_field(name="📋 Quests", value=str(log.quest_completions or 0), inline=True)
-    embed.add_field(name="✨ XP", value=str(log.total_xp or 0), inline=True)
-
-    if summary:
-        embed.add_field(name="📖 Narrative", value=summary, inline=False)
-    else:
-        embed.add_field(name="📖 Narrative", value="*AI summary unavailable — DeepSeek service may be offline. Try again later or add manual notes.*", inline=False)
-
-    embed.set_footer(text="Use /session log to view past sessions")
-    await interaction.followup.send(embed=embed)
+    embed = discord.Embed(title=f"📜 {log.title or f'Session #{log.id}'}", color=0x6366F1)
+    embed.add_field(name="Characters", value=", ".join(log.characters_present or []) or "None", inline=False)
+    if log.summary_text:
+        embed.add_field(name="Summary", value=log.summary_text[:800], inline=False)
+    if notes:
+        note_lines = [f"• {n.text[:120]}" for n in notes[:10]]
+        embed.add_field(name="Notes", value="\n".join(note_lines), inline=False)
+    embed.set_footer(text=f"Session #{log.id}  •  LoreForge")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @session_group.command(name="log", description="View all past sessions (paginated)")
@@ -334,6 +215,222 @@ async def session_log(interaction: discord.Interaction):
 
     view = SessionLogView(pages=sessions[:20], page=0)
     await interaction.followup.send(embed=view._build_embed(), view=view, ephemeral=True)
+
+
+# ── Session autocomplete ──────────────────────────────────────────────────────
+
+async def _session_autocomplete(interaction: discord.Interaction, current: str):
+    async with get_db() as db:
+        result = await db.execute(
+            select(SessionLog).where(
+                SessionLog.guild_id == interaction.guild_id,
+                SessionLog.title.ilike(f"%{current}%"),
+            ).order_by(desc(SessionLog.started_at)).limit(25)
+        )
+        sessions = result.scalars().all()
+    return [
+        app_commands.Choice(name=f"#{s.id} {s.title or 'Untitled'}", value=s.id)
+        for s in sessions
+    ]
+
+
+# ── /session note ──────────────────────────────────────────────────────────────
+
+@session_group.command(name="note", description="Add a note to the current or a specific session")
+@app_commands.describe(text="Note text", session_id="Session ID (omit for current session)")
+async def session_note(interaction: discord.Interaction, text: str, session_id: int = None):
+    async with get_db() as db:
+        if session_id:
+            result = await db.execute(
+                select(SessionLog).where(
+                    SessionLog.id == session_id,
+                    SessionLog.guild_id == interaction.guild_id,
+                )
+            )
+            log = result.scalar_one_or_none()
+        else:
+            result = await db.execute(
+                select(SessionLog).where(
+                    SessionLog.guild_id == interaction.guild_id,
+                    SessionLog.ended_at.is_(None),
+                ).order_by(desc(SessionLog.started_at)).limit(1)
+            )
+            log = result.scalar_one_or_none()
+
+        if not log:
+            await interaction.response.send_message("No active session found. Start one with `/session start` or specify a session ID.", ephemeral=True)
+            return
+
+        db.add(SessionNote(
+            session_id=log.id,
+            guild_id=interaction.guild_id,
+            author_user_id=interaction.user.id,
+            text=text,
+        ))
+
+    await interaction.response.send_message(
+        f"📝 Note added to **{log.title or f'Session #{log.id}'}**.", ephemeral=True
+    )
+
+
+# ── /session recap ─────────────────────────────────────────────────────────────
+
+@session_group.command(name="recap", description="View the full recap for a session")
+@app_commands.describe(session_id="Session ID")
+@app_commands.autocomplete(session_id=_session_autocomplete)
+async def session_recap(interaction: discord.Interaction, session_id: int):
+    async with get_db() as db:
+        result = await db.execute(
+            select(SessionLog).where(
+                SessionLog.id == session_id,
+                SessionLog.guild_id == interaction.guild_id,
+            )
+        )
+        log = result.scalar_one_or_none()
+        if not log:
+            await interaction.response.send_message("Session not found.", ephemeral=True)
+            return
+
+        notes_result = await db.execute(
+            select(SessionNote)
+            .where(SessionNote.session_id == log.id)
+            .order_by(SessionNote.timestamp.asc())
+        )
+        notes = list(notes_result.scalars().all())
+
+    embed = discord.Embed(
+        title=f"📜 Recap — {log.title or f'Session #{log.id}'}",
+        description=log.summary_text or "*No summary written. Add one with `/session summary`.*",
+        color=0x6366F1,
+    )
+    if log.started_at:
+        embed.add_field(name="Date", value=f"<t:{int(log.started_at.timestamp())}:D>", inline=True)
+    embed.add_field(name="Characters", value=", ".join(log.characters_present or []) or "None", inline=False)
+    if notes:
+        note_lines = [f"`<t:{int(n.timestamp.timestamp())}:t>` {n.text[:120]}" for n in notes[:15]]
+        embed.add_field(name="Notes", value="\n".join(note_lines), inline=False)
+    embed.set_footer(text=f"Session #{log.id}  •  LoreForge")
+    await interaction.response.send_message(embed=embed)
+
+
+# ── /session characters ────────────────────────────────────────────────────────
+
+@session_group.command(name="characters", description="View which characters were present in a session")
+@app_commands.describe(session_id="Session ID")
+@app_commands.autocomplete(session_id=_session_autocomplete)
+async def session_characters(interaction: discord.Interaction, session_id: int):
+    async with get_db() as db:
+        result = await db.execute(
+            select(SessionLog).where(
+                SessionLog.id == session_id,
+                SessionLog.guild_id == interaction.guild_id,
+            )
+        )
+        log = result.scalar_one_or_none()
+
+    if not log:
+        await interaction.response.send_message("Session not found.", ephemeral=True)
+        return
+
+    chars = log.characters_present or []
+    embed = discord.Embed(
+        title=f"🎭 {log.title or f'Session #{log.id}'} — Characters",
+        description="\n".join(f"• {c}" for c in chars) if chars else "*No characters recorded.*",
+        color=0x6366F1,
+    )
+    await interaction.response.send_message(embed=embed)
+
+
+# ── /session pin ──────────────────────────────────────────────────────────────
+
+@session_group.command(name="pin", description="Post and pin a session recap embed in this channel (GM only)")
+@app_commands.describe(session_id="Session ID")
+@app_commands.autocomplete(session_id=_session_autocomplete)
+async def session_pin(interaction: discord.Interaction, session_id: int):
+    if not await is_gm(interaction):
+        await interaction.response.send_message("Only GMs can pin sessions.", ephemeral=True)
+        return
+
+    async with get_db() as db:
+        result = await db.execute(
+            select(SessionLog).where(
+                SessionLog.id == session_id,
+                SessionLog.guild_id == interaction.guild_id,
+            )
+        )
+        log = result.scalar_one_or_none()
+        if not log:
+            await interaction.response.send_message("Session not found.", ephemeral=True)
+            return
+        notes_result = await db.execute(
+            select(SessionNote).where(SessionNote.session_id == log.id).order_by(SessionNote.timestamp.asc())
+        )
+        notes = list(notes_result.scalars().all())
+
+    embed = discord.Embed(
+        title=f"📌 {log.title or f'Session #{log.id}'}",
+        description=log.summary_text or "*No summary written.*",
+        color=0x8B5CF6,
+    )
+    if log.started_at:
+        embed.add_field(name="Date", value=f"<t:{int(log.started_at.timestamp())}:D>", inline=True)
+    embed.add_field(name="Characters", value=", ".join(log.characters_present or []) or "None", inline=False)
+    if notes:
+        note_lines = [f"• {n.text[:100]}" for n in notes[:8]]
+        embed.add_field(name="Notes", value="\n".join(note_lines), inline=False)
+    embed.set_footer(text=f"Session #{log.id}  •  LoreForge")
+
+    await interaction.response.send_message("📌 Pinning session recap…", ephemeral=True)
+    msg = await interaction.channel.send(embed=embed)
+    try:
+        await msg.pin()
+    except Exception:
+        pass
+
+
+# ── /session link-timeline ────────────────────────────────────────────────────
+
+@session_group.command(name="link-timeline", description="Link a session to a timeline event (GM only)")
+@app_commands.describe(session_id="Session ID", timeline_event_id="Timeline event ID")
+@app_commands.autocomplete(session_id=_session_autocomplete)
+async def session_link_timeline(
+    interaction: discord.Interaction,
+    session_id: int,
+    timeline_event_id: int,
+):
+    if not await is_gm(interaction):
+        await interaction.response.send_message("Only GMs can link sessions to timeline.", ephemeral=True)
+        return
+
+    async with get_db() as db:
+        session_r = await db.execute(
+            select(SessionLog).where(SessionLog.id == session_id, SessionLog.guild_id == interaction.guild_id)
+        )
+        log = session_r.scalar_one_or_none()
+        timeline_r = await db.execute(
+            select(TimelineEvent).where(TimelineEvent.id == timeline_event_id, TimelineEvent.guild_id == interaction.guild_id)
+        )
+        event = timeline_r.scalar_one_or_none()
+
+        if not log:
+            await interaction.response.send_message("Session not found.", ephemeral=True)
+            return
+        if not event:
+            await interaction.response.send_message("Timeline event not found.", ephemeral=True)
+            return
+
+        # Store the link in the SessionLog's notes (no dedicated table for session-timeline, use a session note)
+        db.add(SessionNote(
+            session_id=log.id,
+            guild_id=interaction.guild_id,
+            author_user_id=interaction.user.id,
+            text=f"[Timeline Link] → {event.title} (Event #{event.id})",
+        ))
+
+    await interaction.response.send_message(
+        f"🔗 Session **{log.title or f'#{log.id}'}** linked to timeline event **{event.title}**.",
+        ephemeral=True,
+    )
 
 
 class SessionsCog(commands.Cog, name="Sessions"):

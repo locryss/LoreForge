@@ -81,6 +81,9 @@ class Character(Base):
     retired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     parent_character_id: Mapped[int] = mapped_column(Integer, nullable=True)
     legacy_items: Mapped[dict] = mapped_column(JSON, default=list)
+    # Rebuild 2026 additions
+    is_retired: Mapped[bool] = mapped_column(Boolean, default=False)
+    death_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -171,6 +174,7 @@ class SessionLog(Base):
     total_xp: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    in_world_date: Mapped[str] = mapped_column(String(100), nullable=True)
 
 
 # ── Phase 4: Boss System ──────────────────────────────────────────────────────
@@ -392,6 +396,9 @@ class NPC(Base):
     proxy_mode: Mapped[str] = mapped_column(String(20), default="manual")
 
     gm_user_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    # Rebuild 2026 additions
+    temporary: Mapped[bool] = mapped_column(Boolean, default=False)
+    proxy_brackets: Mapped[str] = mapped_column(String(50), nullable=True)
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -964,3 +971,275 @@ class Religion(Base):
     clergy_notes: Mapped[str] = mapped_column(Text, nullable=True)
     associated_faction_id: Mapped[int] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ── Rebuild 2026: Dice System ─────────────────────────────────────────────────
+
+class RollLog(Base):
+    """Every dice roll a user makes, for /roll history."""
+    __tablename__ = "roll_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    expression: Mapped[str] = mapped_column(String(100), nullable=False)
+    result: Mapped[int] = mapped_column(Integer, nullable=False)
+    details: Mapped[str] = mapped_column(String(500), nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SavedRoll(Base):
+    """User-saved named dice expressions."""
+    __tablename__ = "saved_rolls"
+    __table_args__ = (UniqueConstraint("user_id", "guild_id", "name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    expression: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── Rebuild 2026: Combat Scoreboard ──────────────────────────────────────────
+
+class CombatSession(Base):
+    """An active or past combat board in a channel."""
+    __tablename__ = "combat_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    closed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    opened_by_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    board_message_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+
+
+class Combatant(Base):
+    """A player or NPC on a combat board."""
+    __tablename__ = "combatants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    combat_session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    combatant_type: Mapped[str] = mapped_column(String(10), nullable=False)  # "player" or "npc"
+    character_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    npc_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    current_hp: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_hp: Mapped[int] = mapped_column(Integer, nullable=False)
+    ac: Mapped[int] = mapped_column(Integer, default=10)
+    conditions: Mapped[dict] = mapped_column(JSON, default=list)
+    is_removed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class CombatLog(Base):
+    """Freeform GM notes during combat."""
+    __tablename__ = "combat_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    combat_session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    logged_by_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+# ── Rebuild 2026: NPC Interaction Log ────────────────────────────────────────
+
+class NPCInteractionLog(Base):
+    """Freeform notes logged against an NPC."""
+    __tablename__ = "npc_interaction_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    npc_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    logged_by_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── Rebuild 2026: Lore Cross-Reference ───────────────────────────────────────
+
+class LoreLink(Base):
+    """Bidirectional links between lore entries."""
+    __tablename__ = "lore_links"
+    __table_args__ = (UniqueConstraint("entry_id_a", "entry_id_b"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    entry_id_a: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    entry_id_b: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LorePlayerNote(Base):
+    """Private player notes on lore entries."""
+    __tablename__ = "lore_player_notes"
+    __table_args__ = (UniqueConstraint("user_id", "lore_entry_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    lore_entry_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── Rebuild 2026: Timeline Cross-Reference ────────────────────────────────────
+
+class TimelineEvent(Base):
+    """A world-history event on the timeline."""
+    __tablename__ = "timeline_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    era: Mapped[str] = mapped_column(String(100), nullable=True)
+    tags: Mapped[dict] = mapped_column(JSON, default=list)
+    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TimelineLoreLink(Base):
+    """Link between a timeline event and a lore entry."""
+    __tablename__ = "timeline_lore_links"
+    __table_args__ = (UniqueConstraint("timeline_event_id", "lore_entry_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timeline_event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    lore_entry_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+# ── Rebuild 2026: Session Notes ───────────────────────────────────────────────
+
+class SessionNote(Base):
+    """Freeform notes added during an active session."""
+    __tablename__ = "session_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    author_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── Rebuild 2026: Achievements (manual GM awards only) ────────────────────────
+
+class RPMilestone(Base):
+    """RP milestone awarded by a GM to a character."""
+    __tablename__ = "rp_milestones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    awarded_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    awarded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── Rebuild 2026: Character extras ───────────────────────────────────────────
+
+class CharacterVision(Base):
+    """A GM-sent or rest-triggered vision for a character."""
+    __tablename__ = "character_visions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sent_by_user_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    vision_text: Mapped[str] = mapped_column(Text, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── 2026 Expansion: In-World Calendar ────────────────────────────────────────
+
+class GuildCalendar(Base):
+    """Per-guild in-world date tracking."""
+    __tablename__ = "guild_calendars"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, default=1)
+    month: Mapped[int] = mapped_column(Integer, default=1)
+    day: Mapped[int] = mapped_column(Integer, default=1)
+    era_name: Mapped[str] = mapped_column(String(100), nullable=True)
+    month_names: Mapped[dict] = mapped_column(JSON, default=list)
+    days_per_month: Mapped[int] = mapped_column(Integer, default=30)
+    months_per_year: Mapped[int] = mapped_column(Integer, default=12)
+    total_days_elapsed: Mapped[int] = mapped_column(Integer, default=0)
+    updated_by: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── 2026 Expansion: Character Journals ───────────────────────────────────────
+
+class CharacterJournal(Base):
+    """Private journal entries written by players from their character's perspective."""
+    __tablename__ = "character_journals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    in_world_date: Mapped[str] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── 2026 Expansion: Character Goals / Story Hooks ────────────────────────────
+
+class CharacterGoal(Base):
+    """Personal goals set by players — visible to them and GMs only."""
+    __tablename__ = "character_goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+
+# ── 2026 Expansion: Pinboard / Rumors ────────────────────────────────────────
+
+class Rumor(Base):
+    """In-world bulletin board entries posted by GMs."""
+    __tablename__ = "rumors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    posted_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    posted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── 2026 Expansion: Relationship Bonds ───────────────────────────────────────
+
+class CharacterBond(Base):
+    """Narrative bonds between two characters — purely descriptive, no mechanics."""
+    __tablename__ = "character_bonds"
+    __table_args__ = (UniqueConstraint("character_id", "target_character_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    target_character_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── 2026 Expansion: Session in-world date stamp ───────────────────────────────
+# (SessionLog already exists — adding in_world_date via Alembic-free approach:
+#  the column is added here so init_db creates it on new DBs; Railway's existing
+#  DB will get it added automatically by SQLAlchemy's create_all with checkfirst)

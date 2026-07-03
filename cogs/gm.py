@@ -5,7 +5,7 @@ from sqlalchemy import select, delete
 from datetime import datetime
 
 from database.session import get_db
-from database.models import Character, GuildConfig, GuildGM, PendingApproval, BossTemplate, Location, NPC
+from database.models import Character, GuildConfig, GuildGM, PendingApproval, BossTemplate, Location, NPC, CharacterVision
 from services.utils import gm_only, owner_only, is_gm
 from cogs.character import _offer_attack_unlock
 from services.leveling import check_level_up, hp_gain_on_level, xp_bar
@@ -2463,7 +2463,7 @@ async def gm_vision(interaction: discord.Interaction, user: discord.Member, text
         return
 
     await interaction.response.defer(ephemeral=True)
-    from database.models import Vision
+    from database.models import Vision, CharacterVision
 
     # Save to DB
     async with get_db() as db:
@@ -2482,6 +2482,12 @@ async def gm_vision(interaction: discord.Interaction, user: discord.Member, text
                 guild_id=interaction.guild_id,
                 vision_text=text,
                 trigger="gm_custom",
+            ))
+            db.add(CharacterVision(
+                character_id=char.id,
+                guild_id=interaction.guild_id,
+                sent_by_user_id=interaction.user.id,
+                vision_text=text,
             ))
 
     # DM the player
@@ -2619,6 +2625,131 @@ async def gm_teleport(interaction: discord.Interaction, user: discord.Member, lo
         f"✅ **{char.name}** has been teleported to **{loc.name}**.",
         ephemeral=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# /gm kill @user — Mark a player's active character as dead (GM only)
+# ---------------------------------------------------------------------------
+
+@gm_group.command(name="kill", description="Mark a player's active character as dead (GM only)")
+@app_commands.describe(
+    user="The player whose character died",
+    reason="Cause of death (optional)",
+)
+async def gm_kill(interaction: discord.Interaction, user: discord.Member, reason: str = None):
+    if not await gm_only(interaction):
+        return
+
+    async with get_db() as db:
+        result = await db.execute(
+            select(Character).where(
+                Character.guild_id == interaction.guild_id,
+                Character.user_id == user.id,
+                Character.is_active == True,
+                Character.is_dead == False,
+            )
+        )
+        char = result.scalar_one_or_none()
+        if not char:
+            await interaction.response.send_message(
+                f"{user.mention} has no active living character.", ephemeral=True
+            )
+            return
+        char.is_dead = True
+        char.is_active = False
+        if hasattr(char, "death_date"):
+            char.death_date = datetime.utcnow()
+        char_name = char.name
+        char_class = char.char_class
+        char_level = char.level
+
+    embed = discord.Embed(
+        title="💀 Character Death",
+        description=(
+            f"**{char_name}** has fallen.\n\n"
+            + (f"*{reason}*" if reason else "*Their tale ends here.*")
+        ),
+        color=0x1A1A2E,
+    )
+    embed.add_field(name="Class", value=char_class, inline=True)
+    embed.add_field(name="Level", value=str(char_level), inline=True)
+    embed.add_field(name="Player", value=user.mention, inline=True)
+    embed.set_footer(text=f"Recorded by {interaction.user.display_name}  •  LoreForge")
+
+    await interaction.response.send_message(embed=embed)
+
+    audit = discord.Embed(
+        title="💀 Death Record",
+        description=f"**{char_name}** ({user.mention}) marked dead by {interaction.user.mention}"
+                    + (f"\nReason: {reason}" if reason else ""),
+        color=0x1A1A2E,
+    )
+    await _post_audit_log(interaction.client, interaction.guild_id, audit)
+
+
+# ---------------------------------------------------------------------------
+# /gm announce — Post a styled announcement to the current channel
+# ---------------------------------------------------------------------------
+
+@gm_group.command(name="announce", description="Post a styled announcement to this channel (GM only)")
+@app_commands.describe(
+    message="The announcement text",
+    title="Optional title for the embed",
+)
+async def gm_announce(interaction: discord.Interaction, message: str, title: str = None):
+    if not await gm_only(interaction):
+        return
+
+    embed = discord.Embed(
+        title=title or "📣 Announcement",
+        description=message,
+        color=0x6366F1,
+        timestamp=datetime.utcnow(),
+    )
+    embed.set_footer(text=f"From {interaction.user.display_name}  •  LoreForge")
+    await interaction.response.send_message(embed=embed)
+
+
+@gm_group.command(name="hooks", description="View all active character goals (story hooks) across all players (GM only)")
+async def gm_hooks(interaction: discord.Interaction):
+    if not await gm_only(interaction):
+        return
+    if not interaction.guild_id:
+        await interaction.response.send_message("LoreForge only works in a server.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    from database.models import CharacterGoal
+    async with get_db() as db:
+        result = await db.execute(
+            select(CharacterGoal, Character)
+            .join(Character, CharacterGoal.character_id == Character.id)
+            .where(
+                CharacterGoal.guild_id == interaction.guild_id,
+                CharacterGoal.is_completed == False,
+            )
+            .order_by(CharacterGoal.created_at.asc())
+        )
+        rows = result.all()
+
+    if not rows:
+        await interaction.followup.send("No active character goals found.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🎯 Active Character Story Hooks",
+        description=f"{len(rows)} active goal{'s' if len(rows) != 1 else ''} across all characters.",
+        color=0x10B981,
+    )
+    for goal, char in rows[:20]:
+        embed.add_field(
+            name=f"{char.name}  ·  #{goal.id}",
+            value=goal.text[:200],
+            inline=False,
+        )
+    embed.set_footer(text="LoreForge  ·  Use /character goal complete to mark one finished")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # ---------------------------------------------------------------------------
