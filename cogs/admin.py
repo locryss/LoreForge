@@ -1027,6 +1027,29 @@ class AdminCog(commands.Cog, name="Admin"):
             ephemeral=True,
         )
 
+    @app_commands.command(name="setprefix", description="Change LoreForge's legacy text-command prefix for this server (bot owner only)")
+    @app_commands.describe(prefix="New prefix, e.g. ! or ? (default is \"!\")")
+    async def setprefix(self, interaction: discord.Interaction, prefix: str):
+        if not await self.bot.is_owner(interaction.user):
+            await interaction.response.send_message("Bot owner only.", ephemeral=True)
+            return
+        if len(prefix) > 10:
+            await interaction.response.send_message("Prefix must be 10 characters or fewer.", ephemeral=True)
+            return
+        from sqlalchemy import select
+        from database.session import get_db
+        from database.models import GuildConfig
+        async with get_db() as db:
+            result = await db.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild.id))
+            config = result.scalar_one_or_none()
+            if not config:
+                config = GuildConfig(guild_id=interaction.guild.id, command_prefix=prefix)
+                db.add(config)
+            else:
+                config.command_prefix = prefix
+        self.bot.guild_prefixes[interaction.guild.id] = prefix
+        await interaction.response.send_message(f"Prefix updated to `{prefix}` for this server.", ephemeral=True)
+
     @app_commands.command(name="help", description="Show all LoreForge commands")
     async def help(self, interaction: discord.Interaction):
         from services.utils import is_gm

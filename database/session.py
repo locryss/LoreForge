@@ -108,6 +108,8 @@ async def init_db():
             "ALTER TABLE npcs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
             # Spawn point
             "ALTER TABLE guild_configs ADD COLUMN IF NOT EXISTS default_spawn_location_id INTEGER",
+            # Legacy text-command prefix (per-guild)
+            "ALTER TABLE guild_configs ADD COLUMN IF NOT EXISTS command_prefix VARCHAR(10) DEFAULT '!'",
     ]
     from sqlalchemy import text
     for stmt in _migrations:

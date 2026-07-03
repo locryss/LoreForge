@@ -106,6 +106,7 @@ class GuildConfig(Base):
     current_era: Mapped[str] = mapped_column(String(200), nullable=True)
     world_map_url: Mapped[str] = mapped_column(Text, nullable=True)
     default_spawn_location_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    command_prefix: Mapped[str] = mapped_column(String(10), default="!")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

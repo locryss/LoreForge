@@ -10,7 +10,18 @@ load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+DEFAULT_PREFIX = "!"
+
+
+def get_prefix(bot, message):
+    prefix = DEFAULT_PREFIX
+    if message.guild:
+        prefix = bot.guild_prefixes.get(message.guild.id, DEFAULT_PREFIX)
+    return commands.when_mentioned_or(prefix)(bot, message)
+
+
+bot = commands.Bot(command_prefix=get_prefix, intents=intents, help_command=None)
+bot.guild_prefixes = {}
 
 COGS = [
     "cogs.admin",
@@ -248,9 +259,21 @@ async def _auto_seed_murim_template():
         print(f"[AutoSeed] Done — {locs_created} locations, {factions_created} factions, {npc_created} NPCs, {quests_created} quests, {lore_created} lore, {bosses_created} bosses.")
 
 
+async def _load_guild_prefixes():
+    from sqlalchemy import select
+    from database.session import get_db
+    from database.models import GuildConfig
+    async with get_db() as db:
+        result = await db.execute(select(GuildConfig.guild_id, GuildConfig.command_prefix))
+        for guild_id, prefix in result.all():
+            if prefix:
+                bot.guild_prefixes[guild_id] = prefix
+
+
 @bot.event
 async def on_ready():
     await init_db()
+    await _load_guild_prefixes()
     print(f"{bot.user} is online!")
 
     # Start background tasks
