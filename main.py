@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import asyncio
+import traceback
 from dotenv import load_dotenv
 from database.session import init_db
 
@@ -294,9 +295,31 @@ async def on_ready():
 
 async def main():
     async with bot:
+        # One broken cog must not take the whole bot down.
+        #
+        # This loop used to have no error handling, so a single failing import
+        # propagated straight out of main() and the bot never came online at
+        # all. cogs.character is only the 2nd entry in COGS, so a bad import
+        # there silently cost every command in the other 22 cogs.
+        loaded, failed = [], []
         for cog in COGS:
-            await bot.load_extension(cog)
-            print(f"Loaded: {cog}")
+            try:
+                await bot.load_extension(cog)
+                loaded.append(cog)
+                print(f"Loaded: {cog}")
+            except Exception as e:
+                failed.append(cog)
+                print(f"!! FAILED to load {cog}: {type(e).__name__}: {e}")
+                traceback.print_exc()
+
+        print(f"Cogs loaded: {len(loaded)}/{len(COGS)}")
+        if failed:
+            # Loud, and greppable in the Railway logs -- a degraded bot that
+            # looks healthy is worse than one that says what it lost.
+            print(f"!! DEGRADED — {len(failed)} cog(s) did not load: {', '.join(failed)}")
+        if not loaded:
+            raise RuntimeError("No cogs loaded at all — refusing to start.")
+
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 asyncio.run(main())
